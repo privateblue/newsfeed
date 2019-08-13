@@ -26,7 +26,7 @@ object feeds {
     new FeedID("user:" + user.userId)
 
   def brandFeedOf(post: Post): NFIO[FeedID] =
-    brandOf(post).map(brandFeedName)
+    BrandStore.get(post.brand).map(brandFeedName)
 
   def hashtagFeedsOf(post: Post): NFIO[List[FeedID]] =
     pure(post.hashtags.map(hashtagFeedName))
@@ -51,22 +51,50 @@ object feeds {
         .`object`(post.content)
         .foreignID(post.postId)
         .to(recipients)
-      // set product (if present) as a custom field
-      product <- productOf(post)
+        // set brand and hashtags as custom fields
+        .extraField("brand", post.brand)
+        .extraField("hashtags", post.hashtags.map(_.name).asJava)
+      // optionally set product (if present) as a custom field
       awp =
-        product
-          .map(p => a.extraField("product", p.productId))
+        post.product
+          .map(pid => a.extraField("product", pid))
           .getOrElse(a)
     } yield awp.build()
+
+  def getBrandFeed(brand: Brand, from: Int, limit: Int): NFIO[List[Post]] = {
+    val feed = brandFeedName(brand)
+    getFeed(feed, from, limit)
+  }
+
+  def getHashtagFeed(hashtag: Hashtag, from: Int, limit: Int): NFIO[List[Post]] = {
+    val feed = hashtagFeedName(hashtag)
+    getFeed(feed, from, limit)
+  }
+
+  def getUserFeed(user: User, from: Int, limit: Int): NFIO[List[Post]] = {
+    val feed = userFeedName(user)
+    getFeed(feed, from, limit)
+  }
 
   def getFeed(feedId: FeedID, from: Int, limit: Int): NFIO[List[Post]] = {
     val feed = client.flatFeed(feedId)
     for {
-      activities <- lift(feed.getActivities(new Limit(limit), new Offset(from)).toIO)
-    } yield activities.asScala.toList.map(postFrom)
+      as <- lift(feed.getActivities(new Limit(limit), new Offset(from)).toIO)
+    } yield as.asScala.toList.map(postFrom)
   }
 
-  def postFrom(activity: Activity): Post = ???
+  def postFrom(activity: Activity): Post =
+    Post(
+      postId = activity.getForeignID(),
+      content = activity.getObject(),
+      author = activity.getActor(),
+      brand = activity.getExtra().get("brand").asInstanceOf[String],
+      product = Option(activity.getExtra().get("product").asInstanceOf[String]),
+      hashtags =
+        activity.getExtra().get("hashtags").asInstanceOf[java.util.List[String]]
+          .asScala.toList
+          .map(Hashtag.apply)
+    )
 
   def followBrand(follower: User, brand: Brand): NFIO[Unit] = {
     val feed = brandFeedName(brand)

@@ -19,21 +19,4 @@ object db {
       pure(store = store + (product.productId -> product))
   }
 
-  def brandOf(post: Post): NFIO[Brand] =
-    for {
-      brandId <- post.subject match {
-        case BrandPost(brandId) => pure(brandId)
-        case ProductPost(productId) =>
-          val product = ProductStore.get(productId)
-          product.map(_.brand)
-      }
-      brand <- BrandStore.get(brandId)
-    } yield brand
-
-  def productOf(post: Post): NFIO[Option[Product]] =
-    post.subject match {
-      case ProductPost(productId) => ProductStore.get(productId).map(Some.apply)
-      case BrandPost(_) => pure(None)
-    }
-
 }

@@ -30,15 +30,13 @@ object model {
 
   type PostId = String
 
-  sealed trait PostSubject
-  case class BrandPost(brandId: BrandId) extends PostSubject
-  case class ProductPost(productId: ProductId) extends PostSubject
-
   case class Post(
     postId: PostId,
     content: String,
     author: UserId,
-    subject: PostSubject,
+    brand: BrandId,
+    product: Option[ProductId],
+    // TODO timestamp
     hashtags: List[Hashtag]
   )
 }

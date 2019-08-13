@@ -29,7 +29,8 @@ object example {
     postId = "p1",
     content = "Check out this new apple",
     author = alice.userId,
-    subject = ProductPost(macintosh.productId),
+    brand = apple.brandId,
+    product = Some(macintosh.productId),
     hashtags = List(Hashtag("Fresh"), Hashtag("JustIn"), Hashtag("Health"))
   )
 
@@ -37,15 +38,19 @@ object example {
     postId = "p2",
     content = "Happy Monday from Avocado",
     author = alice.userId,
-    subject = BrandPost(avocado.brandId),
+    brand = avocado.brandId,
+    product = None,
     hashtags = List(Hashtag("ThankGodItsMonday"), Hashtag("Health"))
   )
 
   val program = for {
     _ <- initializeDB
-    a1 <- add(post1)
-    a2 <- add(post2)
-  } yield (a1.getID(), a2.getID())
+    _ <- add(post1)
+    _ <- add(post2)
+    _ <- followBrand(bob, apple)
+    _ <- followHashtag(bob, Hashtag("ThankGodItsMonday"))
+    bobFeed <- getUserFeed(bob, 0, 10)
+  } yield bobFeed
 
   def main(args: Array[String]): Unit =
     run(program).fold(println, println)
