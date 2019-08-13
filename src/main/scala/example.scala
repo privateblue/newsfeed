@@ -42,12 +42,15 @@ object example {
       _ <- c.productStore.put(macintosh)
     } yield ()
 
+  val now = System.currentTimeMillis
+
   val post1 = Post(
     postId = "p1",
     content = "Check out this new apple",
     author = alice.userId,
     brand = apple.brandId,
     product = Some(macintosh.productId),
+    timestamp = now,
     hashtags = List(Hashtag("Fresh"), Hashtag("JustIn"), Hashtag("Health"))
   )
 
@@ -57,15 +60,19 @@ object example {
     author = alice.userId,
     brand = avocado.brandId,
     product = None,
+    timestamp = now,
     hashtags = List(Hashtag("ThankGodItsMonday"), Hashtag("Health"))
   )
 
   val program = for {
     _ <- initializeDB
-    _ <- add(post1)
-    _ <- add(post2)
+    post1Published <- add(post1)
+    post2Published <- add(post2)
     _ <- followBrand(bob, apple)
     _ <- followHashtag(bob, Hashtag("ThankGodItsMonday"))
+    _ <- likePost(bob, post1Published)
+    _ <- likePost(chris, post1Published)
+    _ <- likePost(chris, post2Published)
     bobFeed <- getUserFeed(bob, 0, 10)
   } yield bobFeed
 

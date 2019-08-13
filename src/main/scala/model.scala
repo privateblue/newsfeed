@@ -36,7 +36,14 @@ object model {
     author: UserId,
     brand: BrandId,
     product: Option[ProductId],
-    // TODO timestamp
+    timestamp: Long,
     hashtags: List[Hashtag]
   )
+
+  case class PublishedPost(
+    activityId: String,
+    likeCount: Int,
+    post: Post
+  )
+
 }
