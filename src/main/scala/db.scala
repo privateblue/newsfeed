@@ -3,20 +3,17 @@ import effect._
 
 object db {
 
-  object BrandStore {
-    var store = Map.empty[BrandId, Brand]
-    def get(brandId: BrandId): NFIO[Brand] =
-      store.get(brandId).map(pure).getOrElse(error("Brand not found"))
-    def put(brand: Brand): NFIO[Unit] =
-      pure(store = store + (brand.brandId -> brand))
+  trait Store[Id, Item] {
+    def get(id: Id): NFIO[Item]
+    def put(item: Item): NFIO[Unit]
   }
 
-  object ProductStore {
-    var store = Map.empty[ProductId, Product]
-    def get(productId: ProductId): NFIO[Product] =
-      store.get(productId).map(pure).getOrElse(error("Product not found"))
-    def put(product: Product): NFIO[Unit] =
-      pure(store = store + (product.productId -> product))
+  case class InMemoryStore[Id, Item](getId: Item => Id) extends Store[Id, Item] {
+    private var store = Map.empty[Id, Item]
+    def get(id: Id): NFIO[Item] =
+      store.get(id).map(pure).getOrElse(error(s"Id $id not found"))
+    def put(item: Item): NFIO[Unit] =
+      pure(store = store + (getId(item) -> item))
   }
 
 }

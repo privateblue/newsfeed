@@ -2,19 +2,16 @@ import model._
 import db._
 import effect._
 
-import io.getstream.client.Client
 import io.getstream.core.models._
 import io.getstream.core.options._
 
 import cats.effect.IO
 
-import cats.data.EitherT
+import cats.data.Kleisli
 
 import scala.collection.JavaConverters._
 
 object feeds {
-
-  val client = Client.builder("zffns4bft8ct", "a3xwb4tf7r2n7hx52xk8fd9buv2zte4acehrtaj8yajx27drkwhyfs2r5jymsgbn").build();
 
   def brandFeedName(brand: Brand): FeedID =
     new FeedID("brand:" + brand.brandId)
@@ -26,17 +23,21 @@ object feeds {
     new FeedID("user:" + user.userId)
 
   def brandFeedOf(post: Post): NFIO[FeedID] =
-    BrandStore.get(post.brand).map(brandFeedName)
+    for {
+      c <- ask
+      brand <- c.brandStore.get(post.brand)
+    } yield brandFeedName(brand)
 
   def hashtagFeedsOf(post: Post): NFIO[List[FeedID]] =
     pure(post.hashtags.map(hashtagFeedName))
 
   def add(post: Post): NFIO[Activity] =
     for {
+      c <- ask
       feed <- brandFeedOf(post)
-      brandFeed = client.flatFeed(feed)
+      brandFeed = c.streamClient.flatFeed(feed)
       activity <- activityFrom(post)
-      result <- lift(brandFeed.addActivity(activity).toIO)
+      result <- liftIO(brandFeed.addActivity(activity).toIO)
     } yield result
 
   def activityFrom(post: Post): NFIO[Activity] =
@@ -76,12 +77,12 @@ object feeds {
     getFeed(feed, from, limit)
   }
 
-  def getFeed(feedId: FeedID, from: Int, limit: Int): NFIO[List[Post]] = {
-    val feed = client.flatFeed(feedId)
+  def getFeed(feedId: FeedID, from: Int, limit: Int): NFIO[List[Post]] =
     for {
-      as <- lift(feed.getActivities(new Limit(limit), new Offset(from)).toIO)
+      c <- ask
+      feed = c.streamClient.flatFeed(feedId)
+      as <- liftIO(feed.getActivities(new Limit(limit), new Offset(from)).toIO)
     } yield as.asScala.toList.map(postFrom)
-  }
 
   def postFrom(activity: Activity): Post =
     Post(
@@ -106,13 +107,13 @@ object feeds {
     followFeed(follower, feed)
   }
 
-  def followFeed(follower: User, feedId: FeedID): NFIO[Unit] = {
-    val timeline = userFeedName(follower)
-    val followerTimeline = client.flatFeed(timeline)
-    val feed = client.flatFeed(feedId)
+  def followFeed(follower: User, feedId: FeedID): NFIO[Unit] =
     for {
-      _ <- lift(followerTimeline.follow(feed).toIO)
+      c <- ask
+      timeline = userFeedName(follower)
+      followerTimeline = c.streamClient.flatFeed(timeline)
+      feed = c.streamClient.flatFeed(feedId)
+      _ <- liftIO(followerTimeline.follow(feed).toIO)
     } yield ()
-  }
 
 }

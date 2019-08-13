@@ -1,9 +1,22 @@
 import model._
+import context._
 import effect._
 import db._
 import feeds._
 
+import io.getstream.client.Client
+
 object example {
+
+  val context = AppContext(
+    userStore = InMemoryStore[UserId, User](_.userId),
+    brandStore = InMemoryStore[BrandId, Brand](_.brandId),
+    productStore = InMemoryStore[ProductId, Product](_.productId),
+    streamClient = Client.builder(
+      "zffns4bft8ct",
+      "a3xwb4tf7r2n7hx52xk8fd9buv2zte4acehrtaj8yajx27drkwhyfs2r5jymsgbn"
+    ).build()
+  )
 
   val alice = User("a", "Alice")
   val bob = User("b", "Bob")
@@ -18,11 +31,15 @@ object example {
 
   val initializeDB =
     for {
-      _ <- BrandStore.put(apple)
-      _ <- BrandStore.put(avocado)
-      _ <- BrandStore.put(beet)
-      _ <- BrandStore.put(banana)
-      _ <- ProductStore.put(macintosh)
+      c <- ask
+      _ <- c.userStore.put(alice)
+      _ <- c.userStore.put(bob)
+      _ <- c.userStore.put(chris)
+      _ <- c.brandStore.put(apple)
+      _ <- c.brandStore.put(avocado)
+      _ <- c.brandStore.put(beet)
+      _ <- c.brandStore.put(banana)
+      _ <- c.productStore.put(macintosh)
     } yield ()
 
   val post1 = Post(
@@ -53,5 +70,6 @@ object example {
   } yield bobFeed
 
   def main(args: Array[String]): Unit =
-    run(program).fold(println, println)
+    run(program, context)
+      .fold(println, println)
 }

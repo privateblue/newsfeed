@@ -1,6 +1,8 @@
+import context._
+
 import cats.effect.IO
 
-import cats.data.EitherT
+import cats.data.{EitherT, Kleisli}
 import cats.instances.either._
 import cats.syntax.applicative._
 
@@ -10,11 +12,25 @@ import java.util.concurrent.CancellationException
 
 object effect {
 
-  type NFIO[A] = EitherT[IO, String, A]
-  def pure[A](a: A): NFIO[A] = a.pure[NFIO]
-  def error[A](msg: String): NFIO[A] = EitherT.leftT[IO, A](msg)
-  def lift[A](io: IO[A]): NFIO[A] = EitherT.right(io)
-  def run[A](nfio: NFIO[A]): Either[String, A] = nfio.value.unsafeRunSync()
+  type NFIO[A] = EitherT[Kleisli[IO, AppContext, ?], String, A]
+
+  def pure[A](a: A): NFIO[A] =
+    a.pure[NFIO]
+
+  def error[A](msg: String): NFIO[A] =
+    EitherT.leftT[Kleisli[IO, AppContext, ?], A](msg)
+
+  def liftIO[A](ioa: IO[A]): NFIO[A] =
+    EitherT.right(Kleisli.liftF(ioa))
+
+  def ask: NFIO[AppContext] =
+    EitherT.right(Kleisli.ask[IO, AppContext])
+
+  def local[A](nfio: NFIO[A], c: AppContext): NFIO[A] =
+    EitherT(nfio.value.local(_ => c))
+
+  def run[A](nfio: NFIO[A], context: AppContext): Either[String, A] =
+    nfio.value.run(context).unsafeRunSync()
 
   // https://github.com/typelevel/cats-effect/issues/160#issuecomment-509218922
   def fromJavaFuture[A](makeCf: => CompletableFuture[A]): IO[A] =
