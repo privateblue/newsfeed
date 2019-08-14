@@ -76,10 +76,34 @@ case class StreamJavaFeed(key: String, secret: String) extends Feed {
   private def publishedPostFrom(activity: Activity): PublishedPost =
     PublishedPost(
       publishId = activity.getID(),
+      nonUniqueLikeCount = 0,
       post = Post(
         postId = activity.getForeignID(),
         content = activity.getObject(),
         author = activity.getActor(),
+        brand = activity.getExtra().get("brand").asInstanceOf[String],
+        product = Option(activity.getExtra().get("product").asInstanceOf[String]),
+        timestamp = activity.getTime().getTime(),
+        hashtags =
+          activity.getExtra().get("hashtags").asInstanceOf[java.util.List[String]]
+            .asScala.toList
+            .map(Hashtag.apply)
+      )
+    )
+
+  // must be duplicated for EnrichedActivity, because the getstream client
+  // library doesn't implement any conversions b/w Activity and EnrichedActivity
+  private def publishedPostFrom(activity: EnrichedActivity): PublishedPost =
+    PublishedPost(
+      publishId = activity.getID(),
+      nonUniqueLikeCount =
+        Option(activity.getReactionCounts().get("like"))
+          .map(_.intValue())
+          .getOrElse(0),
+      post = Post(
+        postId = activity.getForeignID(),
+        content = activity.getObject().getID(),
+        author = activity.getActor().getID(),
         brand = activity.getExtra().get("brand").asInstanceOf[String],
         product = Option(activity.getExtra().get("product").asInstanceOf[String]),
         timestamp = activity.getTime().getTime(),
@@ -95,7 +119,11 @@ case class StreamJavaFeed(key: String, secret: String) extends Feed {
       c <- ask
       feed = client.flatFeed(feedId)
       as <- liftIO(
-        feed.getActivities(new Limit(limit), new Offset(from)).toIO
+        feed.getEnrichedActivities(
+          new Limit(limit),
+          new Offset(from),
+          new EnrichmentFlags().withReactionCounts()
+        ).toIO
       )
     } yield as.asScala.toList.map(publishedPostFrom)
 

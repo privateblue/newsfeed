@@ -42,6 +42,7 @@ object model {
 
   case class PublishedPost(
     publishId: String,
+    nonUniqueLikeCount: Int,
     post: Post
   )
 
