@@ -2,9 +2,6 @@ import model._
 import context._
 import effect._
 import db._
-import feeds._
-
-import io.getstream.client.Client
 
 object example {
 
@@ -12,10 +9,10 @@ object example {
     userStore = InMemoryStore[UserId, User](_.userId),
     brandStore = InMemoryStore[BrandId, Brand](_.brandId),
     productStore = InMemoryStore[ProductId, Product](_.productId),
-    streamClient = Client.builder(
-      "zffns4bft8ct",
-      "a3xwb4tf7r2n7hx52xk8fd9buv2zte4acehrtaj8yajx27drkwhyfs2r5jymsgbn"
-    ).build()
+    feed = StreamJavaFeed(
+      key = "zffns4bft8ct",
+      secret = "a3xwb4tf7r2n7hx52xk8fd9buv2zte4acehrtaj8yajx27drkwhyfs2r5jymsgbn"
+    )
   )
 
   val alice = User("a", "Alice")
@@ -66,14 +63,15 @@ object example {
 
   val program = for {
     _ <- initializeDB
-    post1Published <- add(post1)
-    post2Published <- add(post2)
-    _ <- followBrand(bob, apple)
-    _ <- followHashtag(bob, Hashtag("ThankGodItsMonday"))
-    _ <- likePost(bob, post1Published)
-    _ <- likePost(chris, post1Published)
-    _ <- likePost(chris, post2Published)
-    bobFeed <- getUserFeed(bob, 0, 10)
+    c <- ask
+    post1Published <- c.feed.add(post1)
+    post2Published <- c.feed.add(post2)
+    _ <- c.feed.followBrand(bob, apple)
+    _ <- c.feed.followHashtag(bob, Hashtag("ThankGodItsMonday"))
+    _ <- c.feed.like(bob, post1Published)
+    _ <- c.feed.like(chris, post1Published)
+    _ <- c.feed.like(chris, post2Published)
+    bobFeed <- c.feed.userFeed(bob, 0, 10)
   } yield bobFeed
 
   def main(args: Array[String]): Unit =

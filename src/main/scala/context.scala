@@ -7,7 +7,7 @@ object context {
     userStore: Store[UserId, User],
     brandStore: Store[BrandId, Brand],
     productStore: Store[ProductId, Product],
-    streamClient: io.getstream.client.Client
+    feed: Feed
   )
 
 }

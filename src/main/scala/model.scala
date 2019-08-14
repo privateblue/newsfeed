@@ -41,7 +41,7 @@ object model {
   )
 
   case class PublishedPost(
-    activityId: String,
+    publishId: String,
     likeCount: Int,
     post: Post
   )
