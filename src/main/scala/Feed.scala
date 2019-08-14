@@ -13,13 +13,15 @@ trait Feed {
 
   def hashtagFeedId(hashtag: Hashtag): FeedId
 
-  // post to feeds
+  // add / remove posts
 
   def add(post: Post): NFIO[PublishedPost]
 
+  def remove(post: PublishedPost): NFIO[Unit]
+
   // read feeds
 
-  def get(feedId: FeedId, from: Int, limit: Int): NFIO[List[PublishedPost]]
+  protected def get(feedId: FeedId, from: Int, limit: Int): NFIO[List[PublishedPost]]
 
   def userFeed(user: User, from: Int, limit: Int): NFIO[List[PublishedPost]] =
     get(userFeedId(user), from, limit)
@@ -30,9 +32,11 @@ trait Feed {
   def hashtagFeed(hashtag: Hashtag, from: Int, limit: Int): NFIO[List[PublishedPost]] =
     get(hashtagFeedId(hashtag), from, limit)
 
-  // follow feeds
+  // follow / unfollow feeds
 
-  def follow(follower: User, feedId: FeedId): NFIO[Unit]
+  protected def follow(follower: User, feedId: FeedId): NFIO[Unit]
+
+  protected def unfollow(follower: User, feedId: FeedId): NFIO[Unit]
 
   def followUser(follower: User, user: User): NFIO[Unit] =
     follow(follower, userFeedId(user))
@@ -43,8 +47,19 @@ trait Feed {
   def followHashtag(follower: User, hashtag: Hashtag): NFIO[Unit] =
     follow(follower, hashtagFeedId(hashtag))
 
-  // like posts
+  def unfollowUser(follower: User, user: User): NFIO[Unit] =
+    unfollow(follower, userFeedId(user))
+
+  def unfollowBrand(follower: User, brand: Brand): NFIO[Unit] =
+    unfollow(follower, brandFeedId(brand))
+
+  def unfollowHashtag(follower: User, hashtag: Hashtag): NFIO[Unit] =
+    unfollow(follower, hashtagFeedId(hashtag))
+
+  // like / unlike posts
 
   def like(user: User, post: PublishedPost): NFIO[Unit]
+
+  // TODO def unlike(user: User, post: PublishedPost): NFIO[Unit]
 
 }

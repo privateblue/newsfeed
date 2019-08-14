@@ -64,17 +64,23 @@ object example {
   val program = for {
     _ <- initializeDB
     c <- ask
+
     post1Published <- c.feed.add(post1)
     post2Published <- c.feed.add(post2)
     _ <- c.feed.followBrand(bob, apple)
     _ <- c.feed.followHashtag(bob, Hashtag("ThankGodItsMonday"))
     _ <- c.feed.like(bob, post1Published)
-    _ <- c.feed.like(chris, post1Published)
-    _ <- c.feed.like(chris, post2Published)
+    _ <- c.feed.like(bob, post1Published)
+    //_ <- c.feed.like(chris, post1Published)
+    //_ <- c.feed.like(chris, post2Published)
+
     bobFeed <- c.feed.userFeed(bob, 0, 10)
+
+    _ <- c.feed.remove(post1Published)
+    _ <- c.feed.remove(post2Published)
   } yield bobFeed
 
   def main(args: Array[String]): Unit =
     run(program, context)
-      .fold(println, println)
+      .fold(println, l => println(l.mkString("\n")))
 }

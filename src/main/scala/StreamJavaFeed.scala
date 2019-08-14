@@ -5,6 +5,8 @@ import io.getstream.client.Client
 import io.getstream.core.models.{FeedID, Activity, EnrichedActivity, Reaction}
 import io.getstream.core.options.{Limit, Offset, EnrichmentFlags}
 
+import cats.implicits._
+
 import scala.collection.JavaConverters._
 
 case class StreamJavaFeed(key: String, secret: String) extends Feed {
@@ -31,6 +33,21 @@ case class StreamJavaFeed(key: String, secret: String) extends Feed {
       activity = activityFrom(post)
       result <- liftIO(brandFeed.addActivity(activity).toIO)
     } yield publishedPostFrom(result)
+
+  override def remove(post: PublishedPost): NFIO[Unit] =
+    for {
+      c <- ask
+      brand <- c.brandStore.get(post.post.brand)
+      feedId = brandFeedId(brand)
+      brandFeed = client.flatFeed(feedId)
+      _ <- liftIO(brandFeed.removeActivityByID(post.publishId).toIO)
+      feedIds = post.post.hashtags.map(hashtagFeedId)
+      _ <- liftIO(
+          feedIds.map(fid =>
+            client.flatFeed(fid).removeActivityByID(post.publishId).toIO
+          ).sequence
+        )
+    } yield ()
 
   private def activityFrom(post: Post): Activity = {
     // calculate list of hashtag feeds to also add activity to
@@ -77,7 +94,10 @@ case class StreamJavaFeed(key: String, secret: String) extends Feed {
   private def publishedPostFrom(activity: EnrichedActivity): PublishedPost =
     PublishedPost(
       publishId = activity.getID(),
-      likeCount = activity.getReactionCounts().get("like").intValue(),
+      likeCount =
+        Option(activity.getReactionCounts().get("like"))
+          .map(_.intValue())
+          .getOrElse(0),
       post = Post(
         postId = activity.getForeignID(),
         content = activity.getObject().getID(),
@@ -112,6 +132,15 @@ case class StreamJavaFeed(key: String, secret: String) extends Feed {
       followerTimeline = client.flatFeed(timeline)
       feed = client.flatFeed(feedId)
       _ <- liftIO(followerTimeline.follow(feed).toIO)
+    } yield ()
+
+  override def unfollow(follower: User, feedId: FeedID): NFIO[Unit] =
+    for {
+      c <- ask
+      timeline = userFeedId(follower)
+      followerTimeline = client.flatFeed(timeline)
+      feed = client.flatFeed(feedId)
+      _ <- liftIO(followerTimeline.unfollow(feed).toIO)
     } yield ()
 
   override def like(user: User, post: PublishedPost): NFIO[Unit] =
