@@ -2,21 +2,22 @@ import model._
 import context._
 import effect._
 import db._
+import pretty._
 
 import cats.implicits._
 
 object example {
 
-  val alice = User("a", "Alice")
-  val bob = User("b", "Bob")
-  val chris = User("c", "Chris")
+  val alice = User("user-1", "Alice")
+  val bob = User("user-2", "Bob")
+  val chris = User("user-3", "Chris")
 
-  val apple = Brand("apple", "Apple", alice.userId)
-  val avocado = Brand("avocado", "Avocado", alice.userId)
-  val beet = Brand("beet", "Beet", bob.userId)
-  val banana = Brand("banana", "Banana", bob.userId)
+  val apple = Brand("brand-1", "Apple", alice.userId)
+  val avocado = Brand("brand-2", "Avocado", alice.userId)
+  val beet = Brand("brand-3", "Beet", bob.userId)
+  val banana = Brand("brand-4", "Banana", bob.userId)
 
-  val macintosh = Product("m", "Macintosh", apple.brandId, List())
+  val macintosh = Product("product-1", "Macintosh", apple.brandId, List())
 
   val initializeDB =
     for {
@@ -34,7 +35,7 @@ object example {
   val now = System.currentTimeMillis
 
   val post1 = Post(
-    postId = "p1",
+    postId = "post-1",
     content = "Check out this new apple",
     author = alice.userId,
     brand = apple.brandId,
@@ -44,7 +45,7 @@ object example {
   )
 
   val post2 = Post(
-    postId = "p2",
+    postId = "post-2",
     content = "Happy Monday from Avocado",
     author = alice.userId,
     brand = avocado.brandId,
@@ -66,41 +67,33 @@ object example {
 
   val program = for {
     _ <- initializeDB
-    c <- ask
 
-    // Alice publishes two posts
+    // Alice publishes a posts
     post1Published <- newsfeeds.add(post1)
-    post2Published <- newsfeeds.add(post2)
 
-    // Bob follows a brand and a hashtag
-    _ <- newsfeeds.followBrand(bob, apple)
-    _ <- newsfeeds.followHashtag(bob, Hashtag("ThankGodItsMonday"))
+    // Retrieving Apple brand feed
+    appleFeed <- newsfeeds.brandFeed(apple, 0, 10)
 
-    // Bob likes a post on his timeline
-    _ <- newsfeeds.like(bob, post1Published)
+    // Retrieving #Fresh hashtag feed
+    freshFeed <- newsfeeds.hashtagFeed(Hashtag("Fresh"), 0, 10)
+    // Retrieving #JustIn hashtag feed
+    justInFeed <- newsfeeds.hashtagFeed(Hashtag("JustIn"), 0, 10)
+    // Retrieving #Health hashtag feed
+    healthFeed <- newsfeeds.hashtagFeed(Hashtag("Health"), 0, 10)
 
-    // Likes it again, to see at the end if deduplication works
-    _ <- newsfeeds.like(bob, post1Published)
-
-    // Chris likes two posts on her timeline
-    _ <- newsfeeds.like(chris, post1Published)
-    _ <- newsfeeds.like(chris, post2Published)
-
-    // Bob retrieves his timeline
-    bobFeed <- newsfeeds.userFeed(bob, 0, 10)
-
-    // Getting likes for each post in Bob's timeline (one api call per post!)
-    bobFeedWithLikeCounts <- bobFeed.map(
-      p => newsfeeds.likes(p).map(p -> _.size)
-    ).sequence
+    result <- formatPostLists(Map(
+        "Apple" -> appleFeed,
+        "#Fresh" -> freshFeed,
+        "#JustIn" -> justInFeed,
+        "#Health" -> healthFeed
+      ))
 
     // Cleaning up by removing posts from every feed they were published to
     _ <- newsfeeds.remove(post1Published)
-    _ <- newsfeeds.remove(post2Published)
-
-  } yield bobFeedWithLikeCounts
+  } yield result
 
   def main(args: Array[String]): Unit =
     run(program, context)
-      .fold(println, l => println(l.mkString("\n")))
+      .fold(println, println)
+
 }
