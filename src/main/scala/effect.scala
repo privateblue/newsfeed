@@ -26,9 +26,6 @@ object effect {
   def ask: NFIO[AppContext] =
     EitherT.right(Kleisli.ask[IO, AppContext])
 
-  def local[A](nfio: NFIO[A], c: AppContext): NFIO[A] =
-    EitherT(nfio.value.local(_ => c))
-
   def run[A](nfio: NFIO[A], context: AppContext): Either[String, A] =
     nfio.value.run(context).unsafeRunSync()
 
