@@ -10,7 +10,7 @@ import cats.implicits._
 
 import scala.collection.JavaConverters._
 
-case class StreamJavaFeed(key: String, secret: String) extends Feed {
+case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
 
   private val client = Client.builder(key, secret).build()
 

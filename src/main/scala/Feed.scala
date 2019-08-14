@@ -1,7 +1,7 @@
 import model._
 import effect._
 
-trait Feed {
+trait Newsfeeds {
 
   // feed identifiers
 

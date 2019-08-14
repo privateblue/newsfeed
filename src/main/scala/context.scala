@@ -6,8 +6,7 @@ object context {
   case class AppContext(
     userStore: Store[UserId, User],
     brandStore: Store[BrandId, Brand],
-    productStore: Store[ProductId, Product],
-    feed: Feed
+    productStore: Store[ProductId, Product]
   )
 
 }

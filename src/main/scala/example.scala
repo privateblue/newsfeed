@@ -7,16 +7,6 @@ import cats.implicits._
 
 object example {
 
-  val context = AppContext(
-    userStore = InMemoryStore[UserId, User](_.userId),
-    brandStore = InMemoryStore[BrandId, Brand](_.brandId),
-    productStore = InMemoryStore[ProductId, Product](_.productId),
-    feed = StreamJavaFeed(
-      key = "zffns4bft8ct",
-      secret = "a3xwb4tf7r2n7hx52xk8fd9buv2zte4acehrtaj8yajx27drkwhyfs2r5jymsgbn"
-    )
-  )
-
   val alice = User("a", "Alice")
   val bob = User("b", "Bob")
   val chris = User("c", "Chris")
@@ -63,28 +53,52 @@ object example {
     hashtags = List(Hashtag("ThankGodItsMonday"), Hashtag("Health"))
   )
 
+  val context = AppContext(
+    userStore = InMemoryStore[UserId, User](_.userId),
+    brandStore = InMemoryStore[BrandId, Brand](_.brandId),
+    productStore = InMemoryStore[ProductId, Product](_.productId)
+  )
+
+  val newsfeeds = StreamJavaFeeds(
+    key = "zffns4bft8ct",
+    secret = "a3xwb4tf7r2n7hx52xk8fd9buv2zte4acehrtaj8yajx27drkwhyfs2r5jymsgbn"
+  )
+
   val program = for {
     _ <- initializeDB
     c <- ask
 
-    post1Published <- c.feed.add(post1)
-    post2Published <- c.feed.add(post2)
-    _ <- c.feed.followBrand(bob, apple)
-    _ <- c.feed.followHashtag(bob, Hashtag("ThankGodItsMonday"))
-    _ <- c.feed.like(bob, post1Published)
-    _ <- c.feed.like(bob, post1Published) // liking again to see if deduplication works
-    _ <- c.feed.like(chris, post1Published)
-    _ <- c.feed.like(chris, post2Published)
-    _ <- c.feed.unlike(bob, post1Published)
+    // Alice publishes two posts
+    post1Published <- newsfeeds.add(post1)
+    post2Published <- newsfeeds.add(post2)
 
-    bobFeed <- c.feed.userFeed(bob, 0, 10)
+    // Bob follows a brand and a hashtag
+    _ <- newsfeeds.followBrand(bob, apple)
+    _ <- newsfeeds.followHashtag(bob, Hashtag("ThankGodItsMonday"))
 
-    // getting likes for each post in the feed (one api call per post!)
-    bobFeedWithCounts <- bobFeed.map(p => c.feed.likes(p).map(p -> _.size)).sequence
+    // Bob likes a post on his timeline
+    _ <- newsfeeds.like(bob, post1Published)
 
-    _ <- c.feed.remove(post1Published)
-    _ <- c.feed.remove(post2Published)
-  } yield bobFeedWithCounts
+    // Likes it again, to see at the end if deduplication works
+    _ <- newsfeeds.like(bob, post1Published)
+
+    // Chris likes two posts on her timeline
+    _ <- newsfeeds.like(chris, post1Published)
+    _ <- newsfeeds.like(chris, post2Published)
+
+    // Bob retrieves his timeline
+    bobFeed <- newsfeeds.userFeed(bob, 0, 10)
+
+    // Getting likes for each post in Bob's timeline (one api call per post!)
+    bobFeedWithLikeCounts <- bobFeed.map(
+      p => newsfeeds.likes(p).map(p -> _.size)
+    ).sequence
+
+    // Cleaning up by removing posts from every feed they were published to
+    _ <- newsfeeds.remove(post1Published)
+    _ <- newsfeeds.remove(post2Published)
+
+  } yield bobFeedWithLikeCounts
 
   def main(args: Array[String]): Unit =
     run(program, context)
