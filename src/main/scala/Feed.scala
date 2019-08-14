@@ -60,6 +60,8 @@ trait Feed {
 
   def like(user: User, post: PublishedPost): NFIO[Unit]
 
-  // TODO def unlike(user: User, post: PublishedPost): NFIO[Unit]
+  def unlike(user: User, post: PublishedPost): NFIO[Unit]
+
+  def likes(post: PublishedPost): NFIO[List[User]]
 
 }

@@ -3,6 +3,8 @@ import context._
 import effect._
 import db._
 
+import cats.implicits._
+
 object example {
 
   val context = AppContext(
@@ -70,15 +72,19 @@ object example {
     _ <- c.feed.followBrand(bob, apple)
     _ <- c.feed.followHashtag(bob, Hashtag("ThankGodItsMonday"))
     _ <- c.feed.like(bob, post1Published)
-    _ <- c.feed.like(bob, post1Published)
-    //_ <- c.feed.like(chris, post1Published)
-    //_ <- c.feed.like(chris, post2Published)
+    _ <- c.feed.like(bob, post1Published) // liking again to see if deduplication works
+    _ <- c.feed.like(chris, post1Published)
+    _ <- c.feed.like(chris, post2Published)
+    _ <- c.feed.unlike(bob, post1Published)
 
     bobFeed <- c.feed.userFeed(bob, 0, 10)
 
+    // getting likes for each post in the feed (one api call per post!)
+    bobFeedWithCounts <- bobFeed.map(p => c.feed.likes(p).map(p -> _.size)).sequence
+
     _ <- c.feed.remove(post1Published)
     _ <- c.feed.remove(post2Published)
-  } yield bobFeed
+  } yield bobFeedWithCounts
 
   def main(args: Array[String]): Unit =
     run(program, context)
