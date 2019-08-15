@@ -10,7 +10,7 @@ import java8.util.concurrent._
 import java8.util.function.BiFunction
 import java.util.concurrent.CancellationException
 
-object effect {
+object effects {
 
   type NFIO[A] = EitherT[Kleisli[IO, AppContext, ?], String, A]
 

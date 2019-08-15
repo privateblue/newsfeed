@@ -1,12 +1,12 @@
 import model._
 import context._
-import effect._
+import effects._
 import db._
 import pretty._
 
 import cats.implicits._
 
-object example {
+object examples {
 
   val alice = User("user-1", "Alice")
   val bob = User("user-2", "Bob")
@@ -54,18 +54,39 @@ object example {
     hashtags = List(Hashtag("ThankGodItsMonday"), Hashtag("Health"))
   )
 
-  val context = AppContext(
-    userStore = InMemoryStore[UserId, User](_.userId),
-    brandStore = InMemoryStore[BrandId, Brand](_.brandId),
-    productStore = InMemoryStore[ProductId, Product](_.productId)
-  )
-
   val newsfeeds = StreamJavaFeeds(
     key = "zffns4bft8ct",
     secret = "a3xwb4tf7r2n7hx52xk8fd9buv2zte4acehrtaj8yajx27drkwhyfs2r5jymsgbn"
   )
 
-  val program = for {
+  val scenario1 = for {
+    _ <- initializeDB
+
+    // Alice publishes a posts
+    post1Published <- newsfeeds.add(post1)
+
+    // Retrieving Apple brand feed
+    appleFeed <- newsfeeds.brandFeed(apple, 0, 10)
+
+    // Retrieving #Fresh hashtag feed
+    freshFeed <- newsfeeds.hashtagFeed(Hashtag("Fresh"), 0, 10)
+    // Retrieving #JustIn hashtag feed
+    justInFeed <- newsfeeds.hashtagFeed(Hashtag("JustIn"), 0, 10)
+    // Retrieving #Health hashtag feed
+    healthFeed <- newsfeeds.hashtagFeed(Hashtag("Health"), 0, 10)
+
+    result <- formatPostLists(Map(
+        "Apple" -> appleFeed,
+        "#Fresh" -> freshFeed,
+        "#JustIn" -> justInFeed,
+        "#Health" -> healthFeed
+      ))
+
+    // Cleaning up by removing posts from every feed they were published to
+    _ <- newsfeeds.remove(post1Published)
+  } yield result
+
+  val scenario2 = for {
     _ <- initializeDB
 
     // Alice publishes two posts
@@ -88,8 +109,49 @@ object example {
     _ <- newsfeeds.remove(post2Published)
   } yield result
 
+  val scenario3 = for {
+    _ <- initializeDB
+
+    // Alice publishes a post
+    post1Published <- newsfeeds.add(post1)
+
+    // Bob follows the brand
+    _ <- newsfeeds.followBrand(bob, apple)
+
+    // Bob likes the post
+    _ <- newsfeeds.like(bob, post1Published)
+
+    // Then he likes it again somehow
+    _ <- newsfeeds.like(bob, post1Published)
+
+    // Bob retrieves his timeline
+    bobFeed <- newsfeeds.userFeed(bob, 0, 10)
+
+    // Let's take the first (and only) post from Bob's timeline
+    post1InFeed = bobFeed.head
+
+    // Let's first take the number of likes returned by getstream.io
+    nonUniqueLikeCount = post1InFeed.nonUniqueLikeCount
+
+    // Let's count likes ourselves too, by retrieving all of them,
+    // and deduplicating in the background
+    likes <- newsfeeds.likes(post1InFeed)
+    likeCount = likes.size
+
+    result = (nonUniqueLikeCount, likeCount)
+
+    // Cleaning up by removing posts from every feed they were published to
+    _ <- newsfeeds.remove(post1Published)
+  } yield result
+
+  val context = AppContext(
+    userStore = InMemoryStore[UserId, User](_.userId),
+    brandStore = InMemoryStore[BrandId, Brand](_.brandId),
+    productStore = InMemoryStore[ProductId, Product](_.productId)
+  )
+
   def main(args: Array[String]): Unit =
-    run(program, context)
+    run(scenario3, context)
       .fold(println, println)
 
 }

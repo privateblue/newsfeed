@@ -1,5 +1,5 @@
 import model._
-import effect._
+import effects._
 
 import io.getstream.client.Client
 import io.getstream.core.LookupKind
