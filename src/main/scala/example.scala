@@ -68,28 +68,24 @@ object example {
   val program = for {
     _ <- initializeDB
 
-    // Alice publishes a posts
+    // Alice publishes two posts
     post1Published <- newsfeeds.add(post1)
+    post2Published <- newsfeeds.add(post2)
 
-    // Retrieving Apple brand feed
-    appleFeed <- newsfeeds.brandFeed(apple, 0, 10)
+    // Bob follows a brand and a hashtag
+    _ <- newsfeeds.followBrand(bob, apple)
+    _ <- newsfeeds.followHashtag(bob, Hashtag("ThankGodItsMonday"))
 
-    // Retrieving #Fresh hashtag feed
-    freshFeed <- newsfeeds.hashtagFeed(Hashtag("Fresh"), 0, 10)
-    // Retrieving #JustIn hashtag feed
-    justInFeed <- newsfeeds.hashtagFeed(Hashtag("JustIn"), 0, 10)
-    // Retrieving #Health hashtag feed
-    healthFeed <- newsfeeds.hashtagFeed(Hashtag("Health"), 0, 10)
+    // Bob retrieves his timeline
+    bobFeed <- newsfeeds.userFeed(bob, 0, 10)
 
     result <- formatPostLists(Map(
-        "Apple" -> appleFeed,
-        "#Fresh" -> freshFeed,
-        "#JustIn" -> justInFeed,
-        "#Health" -> healthFeed
+        "Bob's timeline" -> bobFeed
       ))
 
     // Cleaning up by removing posts from every feed they were published to
     _ <- newsfeeds.remove(post1Published)
+    _ <- newsfeeds.remove(post2Published)
   } yield result
 
   def main(args: Array[String]): Unit =
