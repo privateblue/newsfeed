@@ -3,6 +3,7 @@ import context._
 import effects._
 import db._
 import pretty._
+import utils._
 
 import cats.implicits._
 
@@ -12,24 +13,32 @@ object examples {
   val bob = User("user-2", "Bob")
   val chris = User("user-3", "Chris")
 
+  val users = List(alice, bob, chris)
+
   val apple = Brand("brand-1", "Apple", alice.userId)
   val avocado = Brand("brand-2", "Avocado", alice.userId)
   val beet = Brand("brand-3", "Beet", bob.userId)
   val banana = Brand("brand-4", "Banana", bob.userId)
+  val coconut = Brand("brand-5", "Coconut", chris.userId)
+
+  val brands = Map(
+    alice.userId -> List(apple, avocado),
+    bob.userId -> List(beet, banana),
+    chris.userId -> List(coconut)
+  )
 
   val macintosh = Product("product-1", "Macintosh", apple.brandId, List())
+
+  val products = Map(
+    apple.brandId -> List(macintosh)
+  )
 
   val initializeDB =
     for {
       c <- ask
-      _ <- c.userStore.put(alice)
-      _ <- c.userStore.put(bob)
-      _ <- c.userStore.put(chris)
-      _ <- c.brandStore.put(apple)
-      _ <- c.brandStore.put(avocado)
-      _ <- c.brandStore.put(beet)
-      _ <- c.brandStore.put(banana)
-      _ <- c.productStore.put(macintosh)
+      _ <- users.map(c.userStore.put).sequence
+      _ <- brands.values.toList.flatten.map(c.brandStore.put).sequence
+      _ <- products.values.toList.flatten.map(c.productStore.put).sequence
     } yield ()
 
   val now = System.currentTimeMillis
@@ -53,6 +62,25 @@ object examples {
     timestamp = now,
     hashtags = List(Hashtag("ThankGodItsMonday"), Hashtag("Health"))
   )
+
+  val thousandHashtags =
+    1.to(1000).toList.map(n => Hashtag(s"Hashtag-$n"))
+
+  val thousandPosts =
+    1.to(1000).toList.map { n =>
+      val author = pickOne(users)
+      val brand = pickOne(brands(author.userId))
+      val product = pickUpTo(1, products.get(brand.brandId).toList.flatten).headOption
+      Post(
+        postId = s"post-$n",
+        content = s"Post no. $n",
+        author = author.userId,
+        brand = brand.brandId,
+        product = product.map(_.productId),
+        timestamp = now,
+        hashtags = pickUpTo(5, thousandHashtags)
+      )
+    }
 
   val newsfeeds = StreamJavaFeeds(
     key = "zffns4bft8ct",
@@ -144,6 +172,30 @@ object examples {
     _ <- newsfeeds.remove(post1Published)
   } yield result
 
+  val scenario4 = for {
+    _ <- initializeDB
+
+    // Publishing 1000 random posts to random hashtags
+    publishedPosts <- thousandPosts.map(newsfeeds.add).sequence
+
+    // Getting the last 10 posts of a brand feed
+    page1 <- newsfeeds.brandFeed(apple, 0, 10)
+
+    // Getting the previous 10 posts
+    page2 <- newsfeeds.brandFeed(apple, 10, 10)
+
+    // Getting again the previous 10 posts
+    page3 <- newsfeeds.brandFeed(apple, 20, 10)
+
+    result <- formatPostLists(Map(
+        "Apple feed page 1" -> page1,
+        "Apple feed page 2" -> page2,
+        "Apple feed page 3" -> page3,
+      ))
+
+    // No cleanup this time, as deleting 1000 posts exceeds an API rate limit
+  } yield result
+
   val context = AppContext(
     userStore = InMemoryStore[UserId, User](_.userId),
     brandStore = InMemoryStore[BrandId, Brand](_.brandId),
@@ -151,7 +203,7 @@ object examples {
   )
 
   def main(args: Array[String]): Unit =
-    run(scenario3, context)
+    run(scenario4, context)
       .fold(println, println)
 
 }

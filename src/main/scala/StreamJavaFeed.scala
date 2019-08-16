@@ -41,7 +41,7 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
       brand <- c.brandStore.get(post.post.brand)
       feedId = brandFeedId(brand)
       brandFeed = client.flatFeed(feedId)
-      _ <- liftIO(brandFeed.removeActivityByID(post.publishId).toIO)
+      _ <- liftIO(brandFeed.removeActivityByForeignID(post.post.postId).toIO)
       feedIds = post.post.hashtags.map(hashtagFeedId)
       _ <- liftIO(
           feedIds.map(fid =>
