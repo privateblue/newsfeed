@@ -7,11 +7,11 @@ trait Newsfeeds {
 
   type FeedId
 
-  def userFeedId(user: User): FeedId
+  protected def userFeedId(user: User): FeedId
 
-  def brandFeedId(brand: Brand): FeedId
+  protected def brandFeedId(brand: Brand): FeedId
 
-  def hashtagFeedId(hashtag: Hashtag): FeedId
+  protected def hashtagFeedId(hashtag: Hashtag): FeedId
 
   // add / remove posts
 
@@ -55,6 +55,16 @@ trait Newsfeeds {
 
   def unfollowHashtag(follower: User, hashtag: Hashtag): NFIO[Unit] =
     unfollow(follower, hashtagFeedId(hashtag))
+
+  protected def followers(feedId: FeedId, from: Int, limit: Int): NFIO[List[User]]
+
+  def brandFollowers(brand: Brand, from: Int, limit: Int): NFIO[List[User]] =
+    followers(brandFeedId(brand), from, limit)
+
+  def hashtagFollowers(hashtag: Hashtag, from: Int, limit: Int): NFIO[List[User]] =
+    followers(hashtagFeedId(hashtag), from, limit)
+
+  def followed(user: User, from: Int, limit: Int): NFIO[(List[Brand], List[Hashtag])]
 
   // like / unlike posts
 

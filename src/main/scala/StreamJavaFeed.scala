@@ -3,7 +3,7 @@ import effects._
 
 import io.getstream.client.Client
 import io.getstream.core.LookupKind
-import io.getstream.core.models.{FeedID, Activity, EnrichedActivity, Reaction}
+import io.getstream.core.models.{FeedID, Activity, EnrichedActivity, Reaction, FollowRelation}
 import io.getstream.core.options.{Limit, Offset, EnrichmentFlags}
 
 import cats.implicits._
@@ -16,14 +16,18 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
 
   type FeedId = io.getstream.core.models.FeedID
 
-  override def userFeedId(user: User): FeedID =
-    new FeedID("user:" + user.userId)
+  protected val userSlug = "user"
+  protected val brandSlug = "brand"
+  protected val hashtagSlug = "hashtag"
 
-  override def brandFeedId(brand: Brand): FeedID =
-    new FeedID("brand:" + brand.brandId)
+  protected override def userFeedId(user: User): FeedID =
+    new FeedID(userSlug, user.userId)
 
-  override def hashtagFeedId(hashtag: Hashtag): FeedID =
-    new FeedID("hashtag:" + hashtag.name)
+  protected override def brandFeedId(brand: Brand): FeedID =
+    new FeedID(brandSlug, brand.brandId)
+
+  protected override def hashtagFeedId(hashtag: Hashtag): FeedID =
+    new FeedID(hashtagSlug, hashtag.name)
 
   override def add(post: Post): NFIO[PublishedPost] =
     for {
@@ -114,7 +118,7 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
       )
     )
 
-  override def get(feedId: FeedID, from: Int, limit: Int): NFIO[List[PublishedPost]] =
+  protected override def get(feedId: FeedID, from: Int, limit: Int): NFIO[List[PublishedPost]] =
     for {
       c <- ask
       feed = client.flatFeed(feedId)
@@ -127,7 +131,7 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
       )
     } yield as.asScala.toList.map(publishedPostFrom)
 
-  override def follow(follower: User, feedId: FeedID): NFIO[Unit] =
+  protected override def follow(follower: User, feedId: FeedID): NFIO[Unit] =
     for {
       c <- ask
       timeline = userFeedId(follower)
@@ -136,7 +140,7 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
       _ <- liftIO(followerTimeline.follow(feed).toIO)
     } yield ()
 
-  override def unfollow(follower: User, feedId: FeedID): NFIO[Unit] =
+  protected override def unfollow(follower: User, feedId: FeedID): NFIO[Unit] =
     for {
       c <- ask
       timeline = userFeedId(follower)
@@ -144,6 +148,37 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
       feed = client.flatFeed(feedId)
       _ <- liftIO(followerTimeline.unfollow(feed).toIO)
     } yield ()
+
+  // The following two methods rely on the internal structure of FeedID, that is
+  // basically a convention, encoded in the first few lines of this class. This
+  // is pretty unfortunate.
+
+  protected override def followers(feedId: FeedId, from: Int, limit: Int): NFIO[List[User]] =
+    for {
+      c <- ask
+      feed = client.flatFeed(feedId)
+      follows <- liftIO(feed.getFollowers(new Limit(limit), new Offset(from)).toIO)
+      users <- follows.asScala.toList.map { f =>
+          val userId = new FeedID(f.getSource()).getUserID()
+          c.userStore.get(userId)
+        }.sequence
+    } yield users
+
+  override def followed(user: User, from: Int, limit: Int): NFIO[(List[Brand], List[Hashtag])] = {
+    val timelineId = userFeedId(user)
+    val timeline = client.flatFeed(timelineId)
+    for {
+      c <- ask
+      followed <- liftIO(timeline.getFollowed(new Limit(limit), new Offset(from)).toIO)
+      feedIds = followed.asScala.toList.map(f => new FeedID(f.getTarget()))
+      brands <- feedIds.collect {
+          case fid if fid.getSlug() == brandSlug => c.brandStore.get(fid.getUserID())
+        }.sequence
+      hashtags = feedIds.collect {
+          case fid if fid.getSlug() == hashtagSlug => Hashtag(fid.getUserID())
+        }
+    } yield (brands, hashtags)
+  }
 
   override def like(user: User, post: PublishedPost): NFIO[Unit] =
     for {

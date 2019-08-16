@@ -5,6 +5,7 @@ import db._
 import pretty._
 import utils._
 
+import cats._
 import cats.implicits._
 
 object examples {
@@ -196,6 +197,40 @@ object examples {
     // No cleanup this time, as deleting 1000 posts exceeds an API rate limit
   } yield result
 
+  val scenario5 = for {
+    _ <- initializeDB
+
+    // Alice publishes two posts
+    post1Published <- newsfeeds.add(post1)
+    post2Published <- newsfeeds.add(post2)
+
+    // Bob follows a few brands and hashtags
+    _ <- newsfeeds.followBrand(bob, apple)
+    _ <- newsfeeds.followBrand(bob, beet)
+    _ <- newsfeeds.followBrand(bob, coconut)
+    _ <- newsfeeds.followHashtag(bob, Hashtag("ThankGodItsMonday"))
+
+    // Chris follows the Beet brand too
+    _ <- newsfeeds.followBrand(chris, beet)
+
+    // Getting first 10 followers of Beet
+    beetFollowers <- newsfeeds.brandFollowers(beet, 0, 10)
+
+    // Getting the first 10 brands and hashtags Bob follows
+    followed <- newsfeeds.followed(bob, 0, 10)
+    (brandsFollowed, hashtagsFollowed) = followed
+
+    result = formatMap[Id, String](Map(
+        "Beet's followers" -> formatUserList(beetFollowers),
+        "Brands Bob follows" -> formatBrandList(brandsFollowed),
+        "Hashtags Bob follows" -> formatHashtagList(hashtagsFollowed)
+      ), x => x)
+
+    // Cleaning up by removing posts from every feed they were published to
+    _ <- newsfeeds.remove(post1Published)
+    _ <- newsfeeds.remove(post2Published)
+  } yield result
+
   val context = AppContext(
     userStore = InMemoryStore[UserId, User](_.userId),
     brandStore = InMemoryStore[BrandId, Brand](_.brandId),
@@ -203,7 +238,7 @@ object examples {
   )
 
   def main(args: Array[String]): Unit =
-    run(scenario4, context)
+    run(scenario5, context)
       .fold(println, println)
 
 }
