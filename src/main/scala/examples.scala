@@ -276,6 +276,57 @@ object examples {
     _ <- newsfeeds.remove(publishedPost)
   } yield result
 
+  // Posting to a 1000 followers at the same time
+  val scenario7 = for {
+    _ <- initializeDB
+
+    // 1000 users follow the brand Apple
+    _ <- thousandUsers.map(u => newsfeeds.followBrand(u, apple)).sequence
+
+    post = Post(
+      postId = "post-3003",
+      content = "This post is read by a 1000 followers",
+      author = alice.userId,
+      brand = apple.brandId,
+      product = Some(macintosh.productId),
+      timestamp = now,
+      hashtags = hundredHashtags
+    )
+
+    // Apple publishes a post
+    publishedPost <- newsfeeds.add(post)
+
+    // We retrieve the latest post of every user's timeline
+    userLatestPosts <- thousandUsers.map(u => newsfeeds.userFeed(u, 0, 1)).sequence
+
+    // We retrieve the latest post of every hashtag feed
+    hashtagLatestPosts <- hundredHashtags.map(h => newsfeeds.hashtagFeed(h, 0, 1)).sequence
+
+    // Cleaning up by removing the post from every feed it was published to
+    _ <- newsfeeds.remove(publishedPost)
+
+    // We retrieve the latest post of every user's timeline again, after cleanup
+    userLatestPostsAfterCleanup <- thousandUsers.map(u => newsfeeds.userFeed(u, 0, 1)).sequence
+
+    // We retrieve the latest post of every hashtag feed again, after cleanup
+    hashtagLatestPostsAfterCleanup <- hundredHashtags.map(h => newsfeeds.hashtagFeed(h, 0, 1)).sequence
+
+    result = formatMap[Id, Boolean](Map(
+      "All followers see the post" -> userLatestPosts.forall(
+        ps => ps.headOption.map(_.post == post).getOrElse(false)
+      ),
+      "All hashtags show the post" -> hashtagLatestPosts.forall(
+        ps => ps.headOption.map(_.post == post).getOrElse(false)
+      ),
+      "Post removed from all followers" -> userLatestPostsAfterCleanup.forall(
+        ps => ps.headOption.map(_.post != post).getOrElse(false)
+      ),
+      "Post removed from all hashtags" -> hashtagLatestPostsAfterCleanup.forall(
+        ps => ps.headOption.map(_.post != post).getOrElse(false)
+      )
+    ), x => x.toString)
+  } yield result
+
   val context = AppContext(
     userStore = InMemoryStore[UserId, User](_.userId),
     brandStore = InMemoryStore[BrandId, Brand](_.brandId),
@@ -283,7 +334,7 @@ object examples {
   )
 
   def main(args: Array[String]): Unit =
-    run(scenario6, context)
+    run(scenario7, context)
       .fold(println, println)
 
 }
