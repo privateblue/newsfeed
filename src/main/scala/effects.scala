@@ -1,10 +1,10 @@
 import context._
 
-import cats.effect.IO
-
 import cats.data.{EitherT, Kleisli}
 import cats.instances.either._
 import cats.syntax.applicative._
+
+import cats.effect.IO
 
 import java8.util.concurrent._
 import java8.util.function.BiFunction

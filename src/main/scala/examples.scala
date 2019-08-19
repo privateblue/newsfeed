@@ -64,11 +64,16 @@ object examples {
     hashtags = List(Hashtag("ThankGodItsMonday"), Hashtag("Health"))
   )
 
+  val thousandUsers =
+    1.to(1000).toList.map(n => User(s"user-$n", s"User no. $n"))
+
   val thousandHashtags =
     1.to(1000).toList.map(n => Hashtag(s"Hashtag-$n"))
 
-  val thousandPosts =
-    1.to(1000).toList.map { n =>
+  val hundredHashtags = thousandHashtags.take(100)
+
+  def thousandPostsFrom(s: Int) =
+    s.to(s + 999).toList.map { n =>
       val author = pickOne(users)
       val brand = pickOne(brands(author.userId))
       val product = pickUpTo(1, products.get(brand.brandId).toList.flatten).headOption
@@ -88,6 +93,7 @@ object examples {
     secret = "a3xwb4tf7r2n7hx52xk8fd9buv2zte4acehrtaj8yajx27drkwhyfs2r5jymsgbn"
   )
 
+  // Publishing posts to multiple feeds at the same time
   val scenario1 = for {
     _ <- initializeDB
 
@@ -115,6 +121,7 @@ object examples {
     _ <- newsfeeds.remove(post1Published)
   } yield result
 
+  // Following brands and hashtags
   val scenario2 = for {
     _ <- initializeDB
 
@@ -138,6 +145,7 @@ object examples {
     _ <- newsfeeds.remove(post2Published)
   } yield result
 
+  // Liking posts
   val scenario3 = for {
     _ <- initializeDB
 
@@ -173,11 +181,12 @@ object examples {
     _ <- newsfeeds.remove(post1Published)
   } yield result
 
+  // Pagination of feeds
   val scenario4 = for {
     _ <- initializeDB
 
     // Publishing 1000 random posts to random hashtags
-    publishedPosts <- thousandPosts.map(newsfeeds.add).sequence
+    publishedPosts <- thousandPostsFrom(1).map(newsfeeds.add).sequence
 
     // Getting the last 10 posts of a brand feed
     page1 <- newsfeeds.brandFeed(apple, 0, 10)
@@ -197,6 +206,8 @@ object examples {
     // No cleanup this time, as deleting 1000 posts exceeds an API rate limit
   } yield result
 
+  // Listing followers of a brand / hashtag,
+  // and also followed brands / hashtag by one user
   val scenario5 = for {
     _ <- initializeDB
 
@@ -231,6 +242,40 @@ object examples {
     _ <- newsfeeds.remove(post2Published)
   } yield result
 
+  // Posting to a 100 hashtags at the same time
+  val scenario6 = for {
+    _ <- initializeDB
+
+    // Bob follows 1000 different hashtags
+    _ <- newsfeeds.followHashtags(bob, hundredHashtags)
+
+    // Publishing a post to a 100 hashtags at the same time
+    publishedPost <- newsfeeds.add(Post(
+      postId = "post-3002",
+      content = "This post is posted to a hundred hashtags",
+      author = alice.userId,
+      brand = apple.brandId,
+      product = Some(macintosh.productId),
+      timestamp = now,
+      hashtags = hundredHashtags
+    ))
+
+    // Getting the last post of these hundred hashtag feeds
+    latestPostsOfHundredHashtags <- hundredHashtags.map(h =>
+      newsfeeds.hashtagFeed(h, 0, 1).map((s"Latest post of #${h.name}" -> _))
+    ).sequence
+
+    // Bob retrieves his timeline
+    bobFeed <- newsfeeds.userFeed(bob, 0, 10)
+
+    result <- formatPostLists(latestPostsOfHundredHashtags.toMap ++ Map(
+      "Bob's timeline" -> bobFeed
+    ))
+
+    // Cleaning up by removing the post from every feed it was published to
+    _ <- newsfeeds.remove(publishedPost)
+  } yield result
+
   val context = AppContext(
     userStore = InMemoryStore[UserId, User](_.userId),
     brandStore = InMemoryStore[BrandId, Brand](_.brandId),
@@ -238,7 +283,7 @@ object examples {
   )
 
   def main(args: Array[String]): Unit =
-    run(scenario5, context)
+    run(scenario6, context)
       .fold(println, println)
 
 }

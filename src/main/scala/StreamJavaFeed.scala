@@ -49,7 +49,7 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
       feedIds = post.post.hashtags.map(hashtagFeedId)
       _ <- liftIO(
           feedIds.map(fid =>
-            client.flatFeed(fid).removeActivityByID(post.publishId).toIO
+            client.flatFeed(fid).removeActivityByForeignID(post.post.postId).toIO
           ).sequence
         )
     } yield ()
@@ -147,6 +147,14 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
       followerTimeline = client.flatFeed(timeline)
       feed = client.flatFeed(feedId)
       _ <- liftIO(followerTimeline.unfollow(feed).toIO)
+    } yield ()
+
+  protected override def followN(follower: User, feedIds: List[FeedId]): NFIO[Unit] =
+    for {
+      c <- ask
+      timeline = userFeedId(follower)
+      follows = feedIds.map(fid => new FollowRelation(timeline.toString, fid.toString))
+      _ <- liftIO(client.batch().followMany(follows.asJava).toIO)
     } yield ()
 
   // The following two methods rely on the internal structure of FeedID, that is

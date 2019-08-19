@@ -38,23 +38,34 @@ trait Newsfeeds {
 
   protected def unfollow(follower: User, feedId: FeedId): NFIO[Unit]
 
+  protected def followN(follower: User, feedIds: List[FeedId]): NFIO[Unit]
+
   def followUser(follower: User, user: User): NFIO[Unit] =
     follow(follower, userFeedId(user))
-
-  def followBrand(follower: User, brand: Brand): NFIO[Unit] =
-    follow(follower, brandFeedId(brand))
-
-  def followHashtag(follower: User, hashtag: Hashtag): NFIO[Unit] =
-    follow(follower, hashtagFeedId(hashtag))
 
   def unfollowUser(follower: User, user: User): NFIO[Unit] =
     unfollow(follower, userFeedId(user))
 
+  def followUsers(follower: User, users: List[User]): NFIO[Unit] =
+    followN(follower, users.map(userFeedId))
+
+  def followBrand(follower: User, brand: Brand): NFIO[Unit] =
+    follow(follower, brandFeedId(brand))
+
   def unfollowBrand(follower: User, brand: Brand): NFIO[Unit] =
     unfollow(follower, brandFeedId(brand))
 
+  def followBrands(follower: User, users: List[Brand]): NFIO[Unit] =
+    followN(follower, users.map(brandFeedId))
+
+  def followHashtag(follower: User, hashtag: Hashtag): NFIO[Unit] =
+    follow(follower, hashtagFeedId(hashtag))
+
   def unfollowHashtag(follower: User, hashtag: Hashtag): NFIO[Unit] =
     unfollow(follower, hashtagFeedId(hashtag))
+
+  def followHashtags(follower: User, users: List[Hashtag]): NFIO[Unit] =
+    followN(follower, users.map(hashtagFeedId))
 
   protected def followers(feedId: FeedId, from: Int, limit: Int): NFIO[List[User]]
 
