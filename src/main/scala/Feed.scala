@@ -7,82 +7,81 @@ trait Newsfeeds {
 
   type FeedId
 
-  protected def userFeedId(user: User): FeedId
+  protected def userFeedId(userId: UserId): FeedId
 
-  protected def brandFeedId(brand: Brand): FeedId
+  protected def brandFeedId(brandId: BrandId): FeedId
 
   protected def hashtagFeedId(hashtag: Hashtag): FeedId
 
-  // add / remove posts
+  // get / add / remove posts
 
-  def add(post: Post): NFIO[PublishedPost]
+  def get(postId: PostId): NFIO[PostView]
 
-  def remove(post: PublishedPost): NFIO[Unit]
+  def add(post: Post): NFIO[PostView]
+
+  def remove(post: PostView): NFIO[Unit]
 
   // read feeds
 
-  protected def get(feedId: FeedId, from: Int, limit: Int): NFIO[List[PublishedPost]]
+  protected def getFeed(feedId: FeedId, from: Int, limit: Int): NFIO[List[PostView]]
 
-  def userFeed(user: User, from: Int, limit: Int): NFIO[List[PublishedPost]] =
-    get(userFeedId(user), from, limit)
+  def userFeed(userId: UserId, from: Int, limit: Int): NFIO[List[PostView]] =
+    getFeed(userFeedId(userId), from, limit)
 
-  def brandFeed(brand: Brand, from: Int, limit: Int): NFIO[List[PublishedPost]] =
-    get(brandFeedId(brand), from, limit)
+  def brandFeed(brandId: BrandId, from: Int, limit: Int): NFIO[List[PostView]] =
+    getFeed(brandFeedId(brandId), from, limit)
 
-  def hashtagFeed(hashtag: Hashtag, from: Int, limit: Int): NFIO[List[PublishedPost]] =
-    get(hashtagFeedId(hashtag), from, limit)
+  def hashtagFeed(hashtag: Hashtag, from: Int, limit: Int): NFIO[List[PostView]] =
+    getFeed(hashtagFeedId(hashtag), from, limit)
 
   // follow / unfollow feeds
 
-  protected def follow(follower: User, feedId: FeedId): NFIO[Unit]
+  protected def follow(follower: UserId, feedId: FeedId): NFIO[Unit]
 
-  protected def unfollow(follower: User, feedId: FeedId): NFIO[Unit]
+  protected def unfollow(follower: UserId, feedId: FeedId): NFIO[Unit]
 
-  protected def followN(follower: User, feedIds: List[FeedId]): NFIO[Unit]
+  protected def batchFollow(follows: Map[UserId, List[FeedId]]): NFIO[Unit]
 
-  def followUser(follower: User, user: User): NFIO[Unit] =
-    follow(follower, userFeedId(user))
+  def followBrand(follower: UserId, brandId: BrandId): NFIO[Unit] =
+    follow(follower, brandFeedId(brandId))
 
-  def unfollowUser(follower: User, user: User): NFIO[Unit] =
-    unfollow(follower, userFeedId(user))
+  def unfollowBrand(follower: UserId, brandId: BrandId): NFIO[Unit] =
+    unfollow(follower, brandFeedId(brandId))
 
-  def followUsers(follower: User, users: List[User]): NFIO[Unit] =
-    followN(follower, users.map(userFeedId))
+  def followBrands(follows: Map[UserId, List[BrandId]]): NFIO[Unit] = {
+    val feedIdFollows = follows.map {
+      case (userId, brandIds) => userId -> brandIds.map(brandFeedId)
+    }
+    batchFollow(feedIdFollows)
+  }
 
-  def followBrand(follower: User, brand: Brand): NFIO[Unit] =
-    follow(follower, brandFeedId(brand))
-
-  def unfollowBrand(follower: User, brand: Brand): NFIO[Unit] =
-    unfollow(follower, brandFeedId(brand))
-
-  def followBrands(follower: User, users: List[Brand]): NFIO[Unit] =
-    followN(follower, users.map(brandFeedId))
-
-  def followHashtag(follower: User, hashtag: Hashtag): NFIO[Unit] =
+  def followHashtag(follower: UserId, hashtag: Hashtag): NFIO[Unit] =
     follow(follower, hashtagFeedId(hashtag))
 
-  def unfollowHashtag(follower: User, hashtag: Hashtag): NFIO[Unit] =
+  def unfollowHashtag(follower: UserId, hashtag: Hashtag): NFIO[Unit] =
     unfollow(follower, hashtagFeedId(hashtag))
 
-  def followHashtags(follower: User, users: List[Hashtag]): NFIO[Unit] =
-    followN(follower, users.map(hashtagFeedId))
+  def followHashtags(follows: Map[UserId, List[Hashtag]]): NFIO[Unit] = {
+    val feedIdFollows = follows.map {
+      case (userId, hashtags) => userId -> hashtags.map(hashtagFeedId)
+    }
+    batchFollow(feedIdFollows)
+  }
 
-  protected def followers(feedId: FeedId, from: Int, limit: Int): NFIO[List[User]]
+  def followed(userId: UserId, from: Int, limit: Int): NFIO[(List[BrandId], List[Hashtag])]
 
-  def brandFollowers(brand: Brand, from: Int, limit: Int): NFIO[List[User]] =
-    followers(brandFeedId(brand), from, limit)
+  def hasFollowedBrand(userId: UserId, brandId: BrandId): NFIO[Boolean]
 
-  def hashtagFollowers(hashtag: Hashtag, from: Int, limit: Int): NFIO[List[User]] =
-    followers(hashtagFeedId(hashtag), from, limit)
+  def followedBrandCount(userId: UserId): NFIO[Int]
 
-  def followed(user: User, from: Int, limit: Int): NFIO[(List[Brand], List[Hashtag])]
+  def followedHashtagCount(userId: UserId): NFIO[Int]
 
-  // like / unlike posts
+  def brandFollowerCount(brandId: BrandId): NFIO[Int]
 
-  def like(user: User, post: PublishedPost): NFIO[Unit]
+  // like posts
 
-  def unlike(user: User, post: PublishedPost): NFIO[Unit]
+  def like(user: UserId, post: PostView): NFIO[Unit]
 
-  def likes(post: PublishedPost): NFIO[List[User]]
+  def hasLiked(userId: UserId, postId: PostId): NFIO[Boolean]
 
 }

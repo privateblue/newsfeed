@@ -4,9 +4,7 @@ import db._
 object context {
 
   case class AppContext(
-    userStore: Store[UserId, User],
-    brandStore: Store[BrandId, Brand],
-    productStore: Store[ProductId, Product]
+    brandStore: Store[BrandId, BrandInfo],
   )
 
 }

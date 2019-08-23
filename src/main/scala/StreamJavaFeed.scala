@@ -6,6 +6,8 @@ import io.getstream.core.LookupKind
 import io.getstream.core.models.{FeedID, Activity, EnrichedActivity, Reaction, FollowRelation}
 import io.getstream.core.options.{Limit, Offset, EnrichmentFlags}
 
+import argonaut._, Argonaut._
+
 import cats.implicits._
 
 import scala.collection.JavaConverters._
@@ -20,65 +22,63 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
   protected val brandSlug = "brand"
   protected val hashtagSlug = "hashtag"
 
-  protected override def userFeedId(user: User): FeedID =
-    new FeedID(userSlug, user.userId)
+  protected override def userFeedId(userId: UserId): FeedID =
+    new FeedID(userSlug, userId)
 
-  protected override def brandFeedId(brand: Brand): FeedID =
-    new FeedID(brandSlug, brand.brandId)
+  protected override def brandFeedId(brandId: BrandId): FeedID =
+    new FeedID(brandSlug, brandId)
 
   protected override def hashtagFeedId(hashtag: Hashtag): FeedID =
-    new FeedID(hashtagSlug, hashtag.name)
+    new FeedID(hashtagSlug, hashtag)
 
-  override def add(post: Post): NFIO[PublishedPost] =
-    for {
-      c <- ask
-      brand <- c.brandStore.get(post.brand)
-      feedId = brandFeedId(brand)
-      brandFeed = client.flatFeed(feedId)
-      activity = activityFrom(post)
-      result <- liftIO(brandFeed.addActivity(activity).toIO)
-    } yield publishedPostFrom(result)
+  override def get(postId: PostId): NFIO[PostView] =
+    ???
 
-  override def remove(post: PublishedPost): NFIO[Unit] =
+  override def add(post: Post): NFIO[PostView] = {
+    val feedId = brandFeedId(post.brandId)
+    val brandFeed = client.flatFeed(feedId)
+    val activity = activityFrom(post)
+    brandFeed.addActivity(activity).toIO.to[NFIO]
+      .map(publishedPostFrom)
+  }
+
+  override def remove(postView: PostView): NFIO[Unit] = {
+    val feedId = brandFeedId(postView.post.brandId)
+    val brandFeed = client.flatFeed(feedId)
+    val hashtagFeedIds = postView.post.hashtags.map(hashtagFeedId)
     for {
-      c <- ask
-      brand <- c.brandStore.get(post.post.brand)
-      feedId = brandFeedId(brand)
-      brandFeed = client.flatFeed(feedId)
-      _ <- liftIO(brandFeed.removeActivityByForeignID(post.post.postId).toIO)
-      feedIds = post.post.hashtags.map(hashtagFeedId)
-      _ <- liftIO(
-          feedIds.map(fid =>
-            client.flatFeed(fid).removeActivityByForeignID(post.post.postId).toIO
-          ).sequence
-        )
+      _ <- brandFeed.removeActivityByForeignID(postView.post.postId).toIO.to[NFIO]
+      _ <- hashtagFeedIds.map(fid =>
+          client.flatFeed(fid).removeActivityByForeignID(postView.post.postId).toIO.to[NFIO]
+        ).sequence
     } yield ()
+  }
 
   private def activityFrom(post: Post): Activity = {
     // calculate list of hashtag feeds to also add activity to
     val recipients = post.hashtags.map(hashtagFeedId).asJava
     // set author, verb, content, postId, time
     val a = Activity.builder()
-      .actor(post.author)
+      .actor(post.authorId)
       .verb("post")
-      .`object`(post.content)
+      .`object`(EncodeJson.of[PostBody].encode(post.body).nospaces)
       .foreignID(post.postId)
       .time(new java.util.Date(post.timestamp))
       // set hashtags as targets
       .to(recipients)
       // set brand and hashtags as custom fields
-      .extraField("brand", post.brand)
-      .extraField("hashtags", post.hashtags.map(_.name).asJava)
+      .extraField("brand", post.brandId)
+      .extraField("hashtags", post.hashtags.asJava)
     // optionally set product (if present) as a custom field
     val awp =
-      post.product
+      post.productId
         .map(pid => a.extraField("product", pid))
         .getOrElse(a)
     awp.build()
   }
 
-  private def publishedPostFrom(activity: Activity): PublishedPost =
-    PublishedPost(
+  private def publishedPostFrom(activity: Activity): PostView =
+    PostView(
       publishId = activity.getID(),
       nonUniqueLikeCount = 0,
       post = Post(
@@ -97,8 +97,8 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
 
   // must be duplicated for EnrichedActivity, because the getstream client
   // library doesn't implement any conversions b/w Activity and EnrichedActivity
-  private def publishedPostFrom(activity: EnrichedActivity): PublishedPost =
-    PublishedPost(
+  private def publishedPostFrom(activity: EnrichedActivity): PostView =
+    PostView(
       publishId = activity.getID(),
       nonUniqueLikeCount =
         Option(activity.getReactionCounts().get("like"))

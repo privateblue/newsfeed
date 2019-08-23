@@ -1,48 +1,53 @@
+import argonaut._, Argonaut._
+
 object model {
 
   type UserId = String
 
-  case class User(
-    userId: UserId,
-    name: String
-  )
-
   type BrandId = String
 
-  case class Brand(
+  case class BrandInfo(
     brandId: BrandId,
     name: String,
-    supplier: UserId
+    storeUri: String
   )
 
   type ProductId = String
 
-  case class Product(
-    productId: ProductId,
-    name: String,
-    brand: BrandId,
-    hashtags: List[Hashtag]
-  )
+  type ImageUri = String
 
-  case class Hashtag(
-    name: String
-  )
+  type Hashtag = String
 
   type PostId = String
 
+  case class PostBody(
+    text: String,
+    images: List[ImageUri]
+  )
+
+  object PostBody {
+    implicit val postBodyCodec =
+      casecodec2(PostBody.apply, PostBody.unapply)("text", "images")
+  }
+
   case class Post(
     postId: PostId,
-    content: String,
-    author: UserId,
-    brand: BrandId,
-    product: Option[ProductId],
     timestamp: Long,
+    permalink: String,
+    authorId: UserId,
+    brandId: BrandId,
+    productId: Option[ProductId],
+    body: PostBody,
     hashtags: List[Hashtag]
   )
 
-  case class PublishedPost(
+  case class PostView(
     publishId: String,
-    nonUniqueLikeCount: Int,
+    viewerId: UserId,
+    hasViewerLiked: Boolean,
+    hashViewerFollowedBrand: Boolean,
+    likeCount: Int,
+    brandInfo: BrandInfo,
     post: Post
   )
 

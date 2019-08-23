@@ -9,5 +9,5 @@ lazy val root = (project in file("."))
         libraryDependencies += "org.typelevel" %% "cats-core" % "2.0.0-M4",
         libraryDependencies += "org.typelevel" %% "cats-effect" % "1.3.0" withSources() withJavadoc(),
         libraryDependencies += "io.getstream.client" % "stream-java" % "3.1.9",
-        libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.8" % Test,
+        libraryDependencies += "io.argonaut" %% "argonaut" % "6.2.2",
     )
