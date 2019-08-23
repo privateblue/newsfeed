@@ -31,25 +31,27 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
   protected override def hashtagFeedId(hashtag: Hashtag): FeedID =
     new FeedID(hashtagSlug, hashtag)
 
-  override def get(postId: PostId): NFIO[PostView] =
+  override def get(postId: PostId): NFIO[PublishedPost] =
     ???
 
-  override def add(post: Post): NFIO[PostView] = {
+  override def add(post: Post): NFIO[PublishedPost] = {
     val feedId = brandFeedId(post.brandId)
     val brandFeed = client.flatFeed(feedId)
     val activity = activityFrom(post)
-    brandFeed.addActivity(activity).toIO.to[NFIO]
-      .map(publishedPostFrom)
+    for {
+      activity <- brandFeed.addActivity(activity).toIO.to[NFIO]
+      publishedPost <- publishedPostFrom(activity)
+    } yield publishedPost
   }
 
-  override def remove(postView: PostView): NFIO[Unit] = {
-    val feedId = brandFeedId(postView.post.brandId)
+  override def remove(post: PublishedPost): NFIO[Unit] = {
+    val feedId = brandFeedId(post.post.brandId)
     val brandFeed = client.flatFeed(feedId)
-    val hashtagFeedIds = postView.post.hashtags.map(hashtagFeedId)
+    val hashtagFeedIds = post.post.hashtags.map(hashtagFeedId)
     for {
-      _ <- brandFeed.removeActivityByForeignID(postView.post.postId).toIO.to[NFIO]
+      _ <- brandFeed.removeActivityByForeignID(post.post.postId).toIO.to[NFIO]
       _ <- hashtagFeedIds.map(fid =>
-          client.flatFeed(fid).removeActivityByForeignID(postView.post.postId).toIO.to[NFIO]
+          client.flatFeed(fid).removeActivityByForeignID(post.post.postId).toIO.to[NFIO]
         ).sequence
     } yield ()
   }
@@ -77,150 +79,132 @@ case class StreamJavaFeeds(key: String, secret: String) extends Newsfeeds {
     awp.build()
   }
 
-  private def publishedPostFrom(activity: Activity): PostView =
-    PostView(
+  private def publishedPostFrom(activity: Activity): NFIO[PublishedPost] =
+    for {
+      postBody <- erroring(Parse.decodeEither[PostBody](activity.getObject()))
+    } yield PublishedPost(
       publishId = activity.getID(),
-      nonUniqueLikeCount = 0,
       post = Post(
         postId = activity.getForeignID(),
-        content = activity.getObject(),
-        author = activity.getActor(),
-        brand = activity.getExtra().get("brand").asInstanceOf[String],
-        product = Option(activity.getExtra().get("product").asInstanceOf[String]),
         timestamp = activity.getTime().getTime(),
+        permalink = s"/${activity.getForeignID()}",
+        authorId = activity.getActor(),
+        brandId = activity.getExtra().get("brand").asInstanceOf[String],
+        productId = Option(activity.getExtra().get("product").asInstanceOf[String]),
+        body = postBody,
         hashtags =
           activity.getExtra().get("hashtags").asInstanceOf[java.util.List[String]]
             .asScala.toList
-            .map(Hashtag.apply)
       )
     )
 
   // must be duplicated for EnrichedActivity, because the getstream client
   // library doesn't implement any conversions b/w Activity and EnrichedActivity
-  private def publishedPostFrom(activity: EnrichedActivity): PostView =
-    PostView(
+  private def publishedPostFrom(activity: EnrichedActivity): NFIO[PublishedPost] =
+    // getting the like count from the activity:
+    // likeCount =
+    //   Option(activity.getReactionCounts().get("like"))
+    //     .map(_.intValue())
+    //     .getOrElse(0)
+    for {
+      postBody <- erroring(Parse.decodeEither[PostBody](activity.getObject().getID()))
+    } yield PublishedPost(
       publishId = activity.getID(),
-      nonUniqueLikeCount =
-        Option(activity.getReactionCounts().get("like"))
-          .map(_.intValue())
-          .getOrElse(0),
       post = Post(
         postId = activity.getForeignID(),
-        content = activity.getObject().getID(),
-        author = activity.getActor().getID(),
-        brand = activity.getExtra().get("brand").asInstanceOf[String],
-        product = Option(activity.getExtra().get("product").asInstanceOf[String]),
         timestamp = activity.getTime().getTime(),
+        permalink = s"/${activity.getForeignID()}",
+        authorId = activity.getActor().getID(),
+        brandId = activity.getExtra().get("brand").asInstanceOf[String],
+        productId = Option(activity.getExtra().get("product").asInstanceOf[String]),
+        body = postBody,
         hashtags =
           activity.getExtra().get("hashtags").asInstanceOf[java.util.List[String]]
             .asScala.toList
-            .map(Hashtag.apply)
       )
     )
 
-  protected override def get(feedId: FeedID, from: Int, limit: Int): NFIO[List[PublishedPost]] =
+  protected override def getFeed(feedId: FeedID, from: Int, limit: Int): NFIO[List[PublishedPost]] = {
+    val feed = client.flatFeed(feedId)
     for {
-      c <- ask
-      feed = client.flatFeed(feedId)
-      as <- liftIO(
-        feed.getEnrichedActivities(
+      as <- feed.getEnrichedActivities(
           new Limit(limit),
           new Offset(from),
           new EnrichmentFlags().withReactionCounts()
-        ).toIO
-      )
-    } yield as.asScala.toList.map(publishedPostFrom)
+        ).toIO.to[NFIO]
+      publishedPosts <- as.asScala.toList.map(publishedPostFrom).sequence
+    } yield publishedPosts
+  }
 
-  protected override def follow(follower: User, feedId: FeedID): NFIO[Unit] =
+  protected override def follow(follower: UserId, feedId: FeedID): NFIO[Unit] = {
+    val timeline = userFeedId(follower)
+    val followerTimeline = client.flatFeed(timeline)
+    val feed = client.flatFeed(feedId)
     for {
-      c <- ask
-      timeline = userFeedId(follower)
-      followerTimeline = client.flatFeed(timeline)
-      feed = client.flatFeed(feedId)
-      _ <- liftIO(followerTimeline.follow(feed).toIO)
+      _ <- followerTimeline.follow(feed).toIO.to[NFIO]
     } yield ()
+  }
 
-  protected override def unfollow(follower: User, feedId: FeedID): NFIO[Unit] =
+  protected override def unfollow(follower: UserId, feedId: FeedID): NFIO[Unit] = {
+    val timeline = userFeedId(follower)
+    val followerTimeline = client.flatFeed(timeline)
+    val feed = client.flatFeed(feedId)
     for {
-      c <- ask
-      timeline = userFeedId(follower)
-      followerTimeline = client.flatFeed(timeline)
-      feed = client.flatFeed(feedId)
-      _ <- liftIO(followerTimeline.unfollow(feed).toIO)
+      _ <- followerTimeline.unfollow(feed).toIO.to[NFIO]
     } yield ()
+  }
 
-  protected override def followN(follower: User, feedIds: List[FeedId]): NFIO[Unit] =
+  protected override def batchFollow(follows: Map[UserId, List[FeedId]]): NFIO[Unit] = {
+    val fs = follows.flatMap {
+      case (follower, feedIds) =>
+        feedIds.map(fid => new FollowRelation(userFeedId(follower).toString, fid.toString))
+    }
     for {
-      c <- ask
-      timeline = userFeedId(follower)
-      follows = feedIds.map(fid => new FollowRelation(timeline.toString, fid.toString))
-      _ <- liftIO(client.batch().followMany(follows.asJava).toIO)
+      _ <- client.batch().followMany(fs.asJava).toIO.to[NFIO]
     } yield ()
+  }
 
-  // The following two methods rely on the internal structure of FeedID, that is
-  // basically a convention, encoded in the first few lines of this class. This
-  // is pretty unfortunate.
-
-  protected override def followers(feedId: FeedId, from: Int, limit: Int): NFIO[List[User]] =
-    for {
-      c <- ask
-      feed = client.flatFeed(feedId)
-      follows <- liftIO(feed.getFollowers(new Limit(limit), new Offset(from)).toIO)
-      users <- follows.asScala.toList.map { f =>
-          val userId = new FeedID(f.getSource()).getUserID()
-          c.userStore.get(userId)
-        }.sequence
-    } yield users
-
-  override def followed(user: User, from: Int, limit: Int): NFIO[(List[Brand], List[Hashtag])] = {
+  // this method rely on the internal structure of FeedID, that is basically a
+  // convention, encoded in the first few lines of this class. This is pretty
+  // unfortunate.
+  override def followed(user: UserId, from: Int, limit: Int): NFIO[(List[BrandId], List[Hashtag])] = {
     val timelineId = userFeedId(user)
     val timeline = client.flatFeed(timelineId)
     for {
-      c <- ask
-      followed <- liftIO(timeline.getFollowed(new Limit(limit), new Offset(from)).toIO)
+      followed <- timeline.getFollowed(new Limit(limit), new Offset(from)).toIO.to[NFIO]
       feedIds = followed.asScala.toList.map(f => new FeedID(f.getTarget()))
-      brands <- feedIds.collect {
-          case fid if fid.getSlug() == brandSlug => c.brandStore.get(fid.getUserID())
-        }.sequence
-      hashtags = feedIds.collect {
-          case fid if fid.getSlug() == hashtagSlug => Hashtag(fid.getUserID())
+      brandIds = feedIds.collect {
+          case fid if fid.getSlug() == brandSlug => fid.getUserID()
         }
-    } yield (brands, hashtags)
+      hashtags = feedIds.collect {
+          case fid if fid.getSlug() == hashtagSlug => fid.getUserID()
+        }
+    } yield (brandIds, hashtags)
   }
 
-  override def like(user: User, post: PublishedPost): NFIO[Unit] =
+  def hasFollowedBrand(userId: UserId, brandId: BrandId): NFIO[Boolean] =
+    ???
+
+  def followedBrandCount(userId: UserId): NFIO[Int] =
+    ???
+
+  def followedHashtagCount(userId: UserId): NFIO[Int] =
+    ???
+
+  def brandFollowerCount(brandId: BrandId): NFIO[Int] =
+    ???
+
+  override def like(userId: UserId, post: PublishedPost): NFIO[Unit] =
     for {
       c <- ask
       like = new Reaction.Builder()
         .kind("like")
         .activityID(post.publishId)
         .build()
-      _ <- liftIO(client.reactions().add(user.userId, like).toIO)
+      _ <- client.reactions().add(userId, like).toIO.to[NFIO]
     } yield ()
 
-  override def unlike(user: User, post: PublishedPost): NFIO[Unit] =
-    for {
-      c <- ask
-      reactions <- liftIO(
-        client.reactions().filter(LookupKind.ACTIVITY, post.publishId, "like").toIO
-      )
-      _ <- liftIO(
-          reactions.asScala.toList
-            .filter(_.getUserID() == user.userId)
-            .map(r =>
-              client.reactions().delete(r.getId()).toIO
-            ).sequence
-        )
-    } yield ()
-
-  override def likes(post: PublishedPost): NFIO[List[User]] =
-    for {
-      c <- ask
-      reactions <- liftIO(
-        client.reactions().filter(LookupKind.ACTIVITY, post.publishId, "like").toIO
-      )
-      userIds = reactions.asScala.toList.map(_.getUserID()).distinct
-      users <- userIds.map(c.userStore.get).sequence
-    } yield users
+    def hasLiked(userId: UserId, postId: PostId): NFIO[Boolean] =
+      ???
 
 }

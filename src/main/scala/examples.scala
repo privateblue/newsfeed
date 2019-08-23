@@ -10,80 +10,84 @@ import cats.implicits._
 
 object examples {
 
-  val alice = User("user-1", "Alice")
-  val bob = User("user-2", "Bob")
-  val chris = User("user-3", "Chris")
+  val alice = "user-1"
+  val bob = "user-2"
+  val chris = "user-3"
 
   val users = List(alice, bob, chris)
 
-  val apple = Brand("brand-1", "Apple", alice.userId)
-  val avocado = Brand("brand-2", "Avocado", alice.userId)
-  val beet = Brand("brand-3", "Beet", bob.userId)
-  val banana = Brand("brand-4", "Banana", bob.userId)
-  val coconut = Brand("brand-5", "Coconut", chris.userId)
+  val apple = "brand-1"
+  val avocado = "brand-2"
+  val beet = "brand-3"
+  val banana = "brand-4"
+  val coconut = "brand-5"
 
   val brands = Map(
-    alice.userId -> List(apple, avocado),
-    bob.userId -> List(beet, banana),
-    chris.userId -> List(coconut)
+    alice -> List(apple, avocado),
+    bob -> List(beet, banana),
+    chris -> List(coconut)
   )
 
-  val macintosh = Product("product-1", "Macintosh", apple.brandId, List())
+  val macintosh = "product-1"
 
   val products = Map(
-    apple.brandId -> List(macintosh)
+    apple -> List(macintosh)
   )
-
-  val initializeDB =
-    for {
-      c <- ask
-      _ <- users.map(c.userStore.put).sequence
-      _ <- brands.values.toList.flatten.map(c.brandStore.put).sequence
-      _ <- products.values.toList.flatten.map(c.productStore.put).sequence
-    } yield ()
 
   val now = System.currentTimeMillis
 
   val post1 = Post(
     postId = "post-1",
-    content = "Check out this new apple",
-    author = alice.userId,
-    brand = apple.brandId,
-    product = Some(macintosh.productId),
     timestamp = now,
-    hashtags = List(Hashtag("Fresh"), Hashtag("JustIn"), Hashtag("Health"))
+    permalink = "/post-1",
+    authorId = alice,
+    brandId = apple,
+    productId = Some(macintosh),
+    body = PostBody(
+      text = "Check out this new apple",
+      images = List()
+    ),
+    hashtags = List("Fresh", "JustIn", "Health")
   )
 
   val post2 = Post(
     postId = "post-2",
-    content = "Happy Monday from Avocado",
-    author = alice.userId,
-    brand = avocado.brandId,
-    product = None,
     timestamp = now,
-    hashtags = List(Hashtag("ThankGodItsMonday"), Hashtag("Health"))
+    permalink = "/post-2",
+    authorId = alice,
+    brandId = avocado,
+    productId = None,
+    body = PostBody(
+      text = "Happy Monday from Avocado",
+      images = List()
+    ),
+    hashtags = List("ThankGodItsMonday", "Health")
   )
 
   val thousandUsers =
-    1.to(1000).toList.map(n => User(s"user-$n", s"User no. $n"))
+    1.to(1000).toList.map(n => s"user-$n")
 
   val thousandHashtags =
-    1.to(1000).toList.map(n => Hashtag(s"Hashtag-$n"))
+    1.to(1000).toList.map(n => s"Hashtag-$n")
 
   val hundredHashtags = thousandHashtags.take(100)
 
   def thousandPostsFrom(s: Int) =
     s.to(s + 999).toList.map { n =>
       val author = pickOne(users)
-      val brand = pickOne(brands(author.userId))
-      val product = pickUpTo(1, products.get(brand.brandId).toList.flatten).headOption
+      val brand = pickOne(brands(author))
+      val product = pickUpTo(1, products.get(brand).toList.flatten).headOption
       Post(
         postId = s"post-$n",
-        content = s"Post no. $n",
-        author = author.userId,
-        brand = brand.brandId,
-        product = product.map(_.productId),
         timestamp = now,
+        permalink = s"/post-$n",
+        authorId = author,
+        brandId = brand,
+        productId = product,
+        body = PostBody(
+          text = s"Post no. $n",
+          images = List()
+        ),
         hashtags = pickUpTo(5, thousandHashtags)
       )
     }
@@ -95,8 +99,6 @@ object examples {
 
   // Publishing posts to multiple feeds at the same time
   val scenario1 = for {
-    _ <- initializeDB
-
     // Alice publishes a posts
     post1Published <- newsfeeds.add(post1)
 
@@ -104,13 +106,13 @@ object examples {
     appleFeed <- newsfeeds.brandFeed(apple, 0, 10)
 
     // Retrieving #Fresh hashtag feed
-    freshFeed <- newsfeeds.hashtagFeed(Hashtag("Fresh"), 0, 10)
+    freshFeed <- newsfeeds.hashtagFeed("Fresh", 0, 10)
     // Retrieving #JustIn hashtag feed
-    justInFeed <- newsfeeds.hashtagFeed(Hashtag("JustIn"), 0, 10)
+    justInFeed <- newsfeeds.hashtagFeed("JustIn", 0, 10)
     // Retrieving #Health hashtag feed
-    healthFeed <- newsfeeds.hashtagFeed(Hashtag("Health"), 0, 10)
+    healthFeed <- newsfeeds.hashtagFeed("Health", 0, 10)
 
-    result <- formatPostLists(Map(
+    result = formatPostLists(Map(
         "Apple" -> appleFeed,
         "#Fresh" -> freshFeed,
         "#JustIn" -> justInFeed,
@@ -123,20 +125,18 @@ object examples {
 
   // Following brands and hashtags
   val scenario2 = for {
-    _ <- initializeDB
-
     // Alice publishes two posts
     post1Published <- newsfeeds.add(post1)
     post2Published <- newsfeeds.add(post2)
 
     // Bob follows a brand and a hashtag
     _ <- newsfeeds.followBrand(bob, apple)
-    _ <- newsfeeds.followHashtag(bob, Hashtag("ThankGodItsMonday"))
+    _ <- newsfeeds.followHashtag(bob, "ThankGodItsMonday")
 
     // Bob retrieves his timeline
     bobFeed <- newsfeeds.userFeed(bob, 0, 10)
 
-    result <- formatPostLists(Map(
+    result = formatPostLists(Map(
         "Bob's timeline" -> bobFeed
       ))
 
@@ -146,45 +146,41 @@ object examples {
   } yield result
 
   // Liking posts
-  val scenario3 = for {
-    _ <- initializeDB
-
-    // Alice publishes a post
-    post1Published <- newsfeeds.add(post1)
-
-    // Bob follows the brand
-    _ <- newsfeeds.followBrand(bob, apple)
-
-    // Bob likes the post
-    _ <- newsfeeds.like(bob, post1Published)
-
-    // Then he likes it again somehow
-    _ <- newsfeeds.like(bob, post1Published)
-
-    // Bob retrieves his timeline
-    bobFeed <- newsfeeds.userFeed(bob, 0, 10)
-
-    // Let's take the first (and only) post from Bob's timeline
-    post1InFeed = bobFeed.head
-
-    // Let's first take the number of likes returned by getstream.io
-    nonUniqueLikeCount = post1InFeed.nonUniqueLikeCount
-
-    // Let's count likes ourselves too, by retrieving all of them,
-    // and deduplicating in the background
-    likes <- newsfeeds.likes(post1InFeed)
-    likeCount = likes.size
-
-    result = (nonUniqueLikeCount, likeCount)
-
-    // Cleaning up by removing posts from every feed they were published to
-    _ <- newsfeeds.remove(post1Published)
-  } yield result
+  // val scenario3 = for {
+  //   // Alice publishes a post
+  //   post1Published <- newsfeeds.add(post1)
+  //
+  //   // Bob follows the brand
+  //   _ <- newsfeeds.followBrand(bob, apple)
+  //
+  //   // Bob likes the post
+  //   _ <- newsfeeds.like(bob, post1Published)
+  //
+  //   // Then he likes it again somehow
+  //   _ <- newsfeeds.like(bob, post1Published)
+  //
+  //   // Bob retrieves his timeline
+  //   bobFeed <- newsfeeds.userFeed(bob, 0, 10)
+  //
+  //   // Let's take the first (and only) post from Bob's timeline
+  //   post1InFeed = bobFeed.head
+  //
+  //   // Let's first take the number of likes returned by getstream.io
+  //   nonUniqueLikeCount = post1InFeed.nonUniqueLikeCount
+  //
+  //   // Let's count likes ourselves too, by retrieving all of them,
+  //   // and deduplicating in the background
+  //   likes <- newsfeeds.likes(post1InFeed)
+  //   likeCount = likes.size
+  //
+  //   result = (nonUniqueLikeCount, likeCount)
+  //
+  //   // Cleaning up by removing posts from every feed they were published to
+  //   _ <- newsfeeds.remove(post1Published)
+  // } yield result
 
   // Pagination of feeds
   val scenario4 = for {
-    _ <- initializeDB
-
     // Publishing 1000 random posts to random hashtags
     publishedPosts <- thousandPostsFrom(1).map(newsfeeds.add).sequence
 
@@ -197,7 +193,7 @@ object examples {
     // Getting again the previous 10 posts
     page3 <- newsfeeds.brandFeed(apple, 20, 10)
 
-    result <- formatPostLists(Map(
+    result = formatPostLists(Map(
         "Apple feed page 1" -> page1,
         "Apple feed page 2" -> page2,
         "Apple feed page 3" -> page3,
@@ -206,11 +202,8 @@ object examples {
     // No cleanup this time, as deleting 1000 posts exceeds an API rate limit
   } yield result
 
-  // Listing followers of a brand / hashtag,
-  // and also followed brands / hashtag by one user
+  // Listing followed brands / hashtag by a user
   val scenario5 = for {
-    _ <- initializeDB
-
     // Alice publishes two posts
     post1Published <- newsfeeds.add(post1)
     post2Published <- newsfeeds.add(post2)
@@ -219,20 +212,16 @@ object examples {
     _ <- newsfeeds.followBrand(bob, apple)
     _ <- newsfeeds.followBrand(bob, beet)
     _ <- newsfeeds.followBrand(bob, coconut)
-    _ <- newsfeeds.followHashtag(bob, Hashtag("ThankGodItsMonday"))
+    _ <- newsfeeds.followHashtag(bob, "ThankGodItsMonday")
 
     // Chris follows the Beet brand too
     _ <- newsfeeds.followBrand(chris, beet)
-
-    // Getting first 10 followers of Beet
-    beetFollowers <- newsfeeds.brandFollowers(beet, 0, 10)
 
     // Getting the first 10 brands and hashtags Bob follows
     followed <- newsfeeds.followed(bob, 0, 10)
     (brandsFollowed, hashtagsFollowed) = followed
 
     result = formatMap[Id, String](Map(
-        "Beet's followers" -> formatUserList(beetFollowers),
         "Brands Bob follows" -> formatBrandList(brandsFollowed),
         "Hashtags Bob follows" -> formatHashtagList(hashtagsFollowed)
       ), x => x)
@@ -244,31 +233,33 @@ object examples {
 
   // Posting to a 100 hashtags at the same time
   val scenario6 = for {
-    _ <- initializeDB
-
     // Bob follows 1000 different hashtags
-    _ <- newsfeeds.followHashtags(bob, hundredHashtags)
+    _ <- newsfeeds.followHashtags(Map(bob -> hundredHashtags))
 
     // Publishing a post to a 100 hashtags at the same time
     publishedPost <- newsfeeds.add(Post(
       postId = "post-3002",
-      content = "This post is posted to a hundred hashtags",
-      author = alice.userId,
-      brand = apple.brandId,
-      product = Some(macintosh.productId),
       timestamp = now,
+      permalink = "/post-3002",
+      authorId = alice,
+      brandId = apple,
+      productId = Some(macintosh),
+      body = PostBody(
+        text = "This post is posted to a hundred hashtags",
+        images = List()
+      ),
       hashtags = hundredHashtags
     ))
 
     // Getting the last post of these hundred hashtag feeds
     latestPostsOfHundredHashtags <- hundredHashtags.map(h =>
-      newsfeeds.hashtagFeed(h, 0, 1).map((s"Latest post of #${h.name}" -> _))
+      newsfeeds.hashtagFeed(h, 0, 1).map((s"Latest post of #$h" -> _))
     ).sequence
 
     // Bob retrieves his timeline
     bobFeed <- newsfeeds.userFeed(bob, 0, 10)
 
-    result <- formatPostLists(latestPostsOfHundredHashtags.toMap ++ Map(
+    result = formatPostLists(latestPostsOfHundredHashtags.toMap ++ Map(
       "Bob's timeline" -> bobFeed
     ))
 
@@ -278,18 +269,20 @@ object examples {
 
   // Posting to a 1000 followers at the same time
   val scenario7 = for {
-    _ <- initializeDB
-
     // 1000 users follow the brand Apple
     _ <- thousandUsers.map(u => newsfeeds.followBrand(u, apple)).sequence
 
     post = Post(
       postId = "post-3003",
-      content = "This post is read by a 1000 followers",
-      author = alice.userId,
-      brand = apple.brandId,
-      product = Some(macintosh.productId),
       timestamp = now,
+      permalink = "/post-3003",
+      authorId = alice,
+      brandId = apple,
+      productId = Some(macintosh),
+      body = PostBody(
+        text = "This post is read by a 1000 followers",
+        images = List()
+      ),
       hashtags = hundredHashtags
     )
 
@@ -327,11 +320,7 @@ object examples {
     ), x => x.toString)
   } yield result
 
-  val context = AppContext(
-    userStore = InMemoryStore[UserId, User](_.userId),
-    brandStore = InMemoryStore[BrandId, Brand](_.brandId),
-    productStore = InMemoryStore[ProductId, Product](_.productId)
-  )
+  val context = AppContext()
 
   def main(args: Array[String]): Unit =
     run(scenario7, context)

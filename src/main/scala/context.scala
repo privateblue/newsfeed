@@ -3,8 +3,6 @@ import db._
 
 object context {
 
-  case class AppContext(
-    brandStore: Store[BrandId, BrandInfo],
-  )
+  case class AppContext()
 
 }

@@ -20,8 +20,8 @@ object effects {
   def error[A](msg: String): NFIO[A] =
     EitherT.leftT[Kleisli[IO, AppContext, ?], A](msg)
 
-  def liftIO[A](ioa: IO[A]): NFIO[A] =
-    EitherT.right(Kleisli.liftF(ioa))
+  def erroring[A](err: Either[String, A]): NFIO[A] =
+    EitherT.fromEither[Kleisli[IO, AppContext, ?]](err)
 
   def ask: NFIO[AppContext] =
     EitherT.right(Kleisli.ask[IO, AppContext])

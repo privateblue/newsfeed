@@ -41,14 +41,18 @@ object model {
     hashtags: List[Hashtag]
   )
 
-  case class PostView(
+  case class PublishedPost(
     publishId: String,
+    post: Post
+  )
+
+  case class PostView(
     viewerId: UserId,
     hasViewerLiked: Boolean,
-    hashViewerFollowedBrand: Boolean,
+    hasViewerFollowedBrand: Boolean,
     likeCount: Int,
     brandInfo: BrandInfo,
-    post: Post
+    publishedPost: PublishedPost
   )
 
 }

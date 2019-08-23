@@ -15,23 +15,23 @@ trait Newsfeeds {
 
   // get / add / remove posts
 
-  def get(postId: PostId): NFIO[PostView]
+  def get(postId: PostId): NFIO[PublishedPost]
 
-  def add(post: Post): NFIO[PostView]
+  def add(post: Post): NFIO[PublishedPost]
 
-  def remove(post: PostView): NFIO[Unit]
+  def remove(post: PublishedPost): NFIO[Unit]
 
   // read feeds
 
-  protected def getFeed(feedId: FeedId, from: Int, limit: Int): NFIO[List[PostView]]
+  protected def getFeed(feedId: FeedId, from: Int, limit: Int): NFIO[List[PublishedPost]]
 
-  def userFeed(userId: UserId, from: Int, limit: Int): NFIO[List[PostView]] =
+  def userFeed(userId: UserId, from: Int, limit: Int): NFIO[List[PublishedPost]] =
     getFeed(userFeedId(userId), from, limit)
 
-  def brandFeed(brandId: BrandId, from: Int, limit: Int): NFIO[List[PostView]] =
+  def brandFeed(brandId: BrandId, from: Int, limit: Int): NFIO[List[PublishedPost]] =
     getFeed(brandFeedId(brandId), from, limit)
 
-  def hashtagFeed(hashtag: Hashtag, from: Int, limit: Int): NFIO[List[PostView]] =
+  def hashtagFeed(hashtag: Hashtag, from: Int, limit: Int): NFIO[List[PublishedPost]] =
     getFeed(hashtagFeedId(hashtag), from, limit)
 
   // follow / unfollow feeds
@@ -80,7 +80,7 @@ trait Newsfeeds {
 
   // like posts
 
-  def like(user: UserId, post: PostView): NFIO[Unit]
+  def like(user: UserId, post: PublishedPost): NFIO[Unit]
 
   def hasLiked(userId: UserId, postId: PostId): NFIO[Boolean]
 
